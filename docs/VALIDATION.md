@@ -548,3 +548,165 @@ document. Their latency is therefore an upper bound.
   ≥ 0.02 nDCG@10 → FTS-exact coverage becomes the recommendation): SciFact
   0.6100 − 0.5907 = **+0.0193** (below 0.02), NFCorpus 0.3056 − 0.2988 =
   **+0.0068** (below 0.02). Criterion not triggered on either dataset.
+
+## T16 – German
+
+Question from `docs/ZIEL.md` ("Deutsch"): does any extension beat plain
+quoted OR with FTS5 BM25 for German? Two extensions were measured:
+`or-stem`/`or-stem-paradigm` (all variants from `german-fts5-stemmer`,
+OR-joined; one family) and `or-trigram` (the built-in FTS5 `trigram`
+tokenizer, sub-word hits such as "Ausweis" inside "Personalausweis").
+Selection was allowed on GermanDPR only; GovService was a holdout with
+nothing adjusted. The reference lane `or` runs on a `unicode61` index
+(folds umlauts, keeps ß); all lanes share the `STOPWORDS` list from
+german-fts5-stemmer.
+
+Stemmer module commit used for every `or-stem*` lane:
+`git -C <german-fts5-stemmer-clone> rev-parse HEAD` →
+`17e64135d75c6948baa113479e80548cc93ba74c` (branch
+`review-fixes-2026-10-28`).
+
+Command form (3a on GermanDPR showed all lanes; 3b on GovService was
+restricted to the selected stem lane):
+
+```
+node "$REPO/scripts/beir-bench.mjs" --data /tmp/beir-de/germandpr --lang de --stemmer "$STEMMER" --repeat 3 --per-query /tmp/beir-de/germandpr.t16.jsonl --json
+node "$REPO/scripts/beir-bench.mjs" --data /tmp/beir-de/govservice --lang de --stemmer "$STEMMER" --repeat 3 --lanes and,or,or-stem,or-trigram --per-query /tmp/beir-de/govservice.t16.jsonl --json
+```
+
+### GermanDPR (selection dataset)
+
+- Source: BEIR export `PM-AI/germandpr-beir`, variant "original"
+  (unmodified titles/texts), test split. The original source
+  `germanquad.s3.amazonaws.com/GermanDPR.zip` is offline (the S3 bucket no
+  longer exists, found 2026-10-28), so the PM-AI export was used; PM-AI
+  states no license of its own. GermanDPR itself is CC BY 4.0.
+- Checksum of the downloaded archive:
+
+```
+ad8bcb01e317f1a4ffef5f3a41f170dd9379c1f3e6e28ec114c695db1f2b1f5d  original.tar.gz
+```
+
+- Size/format check (step 1): `docs=2876 queries=1025 qrels=1025
+  header="q_id\tc_id\trel"` — matches the reference values from the task
+  (2876 docs / 1025 queries / 1025 qrels, per `PM-AI/germandpr-beir`,
+  "original").
+
+Results (`--repeat 3`, worst-of-N timing):
+
+```
+lane              ndcg@10  mrr@10  recall@100  p@10    p50ms  p95ms
+and               0.0263   0.0235  0.0351      0.0035  0.05   0.11
+or                0.4797   0.3759  0.9454      0.0816  1.04   2.36
+or-stem           0.4874   0.3881  0.9610      0.0808  1.53   3.09
+or-stem-paradigm  0.4703   0.3793  0.9629      0.0765  2.16   4.61
+or-trigram        0.5338   0.4332  0.9600      0.0856  3.07   5.61
+db size MB: unicode61=7.69 trigram=19.93
+```
+
+Stem-lane selection (GermanDPR only): `or-stem` nDCG@10 0.4874 vs
+`or-stem-paradigm` 0.4703 → **`or-stem` selected** (higher nDCG@10; the
+tie rule "smaller/`or-stem`" was not needed).
+
+Plausibility against NanoMTEB-German BM25 (0.4647; subset of 200 queries,
+unknown implementation): measured `or` 0.4797, difference **+0.0150**
+(below the 0.15 review trigger).
+
+Per-query compares (`node "$REPO/scripts/beir-compare.mjs"
+/tmp/beir-de/germandpr.t16.jsonl --a <lane> --b <base>`):
+
+```
+or-stem vs or: W=172 T=621 L=232
+terms 1-3  n=125  W=15 T=81 L=29  or-stem: ndcg@10=0.4352 p@10=0.0784  or: ndcg@10=0.4366 p@10=0.0792
+terms 4-6  n=595  W=108 T=357 L=130  or-stem: ndcg@10=0.4714 p@10=0.0795  or: ndcg@10=0.4565 p@10=0.0795
+terms 7+  n=305  W=49 T=183 L=73  or-stem: ndcg@10=0.5401 p@10=0.0843  or: ndcg@10=0.5425 p@10=0.0866
+or-trigram vs or: W=331 T=510 L=184
+terms 1-3  n=125  W=34 T=63 L=28  or-trigram: ndcg@10=0.4671 p@10=0.0824  or: ndcg@10=0.4366 p@10=0.0792
+terms 4-6  n=595  W=197 T=290 L=108  or-trigram: ndcg@10=0.5165 p@10=0.0839  or: ndcg@10=0.4565 p@10=0.0795
+terms 7+  n=305  W=100 T=157 L=48  or-trigram: ndcg@10=0.5947 p@10=0.0902  or: ndcg@10=0.5425 p@10=0.0866
+or vs and: W=800 T=219 L=6
+terms 1-3  n=125  W=77 T=47 L=1  or: ndcg@10=0.4366 p@10=0.0792  and: ndcg@10=0.1165 p@10=0.0176
+terms 4-6  n=595  W=461 T=130 L=4  or: ndcg@10=0.4565 p@10=0.0795  and: ndcg@10=0.0175 p@10=0.0020
+terms 7+  n=305  W=262 T=42 L=1  or: ndcg@10=0.5425 p@10=0.0866  and: ndcg@10=0.0066 p@10=0.0007
+```
+
+### GermanGovService (holdout dataset)
+
+- Source: Hugging Face `it-at-m/LHM-Dienstleistungen-QA`, test split,
+  license MIT. Revision from step 2: `ed40131b56ce86ce3666f2942953595dd9d29608`.
+- Rows fetched via the datasets-server rows API (`config=default`,
+  `split=test`, offsets 0/100/200/300) and converted with
+  `scripts/to-beir.mjs --format hf-rows`, which printed:
+
+```
+docs=105 queries=357 qrels=357
+```
+
+  Reference values: dataset README says the test split has 357 rows (357
+  queries) — matches. MTEB lists 105 documents and 356 queries; the
+  query-count difference (357 measured vs 356) is reported, not adjusted.
+- Checksums of the converted files:
+
+```
+d2e54e7b02625b2a8463839a079cb5cc96048effe94991c898bb3340d2bf3af9  /tmp/beir-de/govservice/corpus.jsonl
+78aebfc65c4d3ee1fce5902cc78d2b7c125f448f8b00a2a2acfaeb9b6b628bc0  /tmp/beir-de/govservice/queries.jsonl
+0ed41baf5da834612e3350f8fd1990c47652ce79ea635e92a0451baf4bc48c8e  /tmp/beir-de/govservice/qrels/test.tsv
+```
+
+Results (`--repeat 3`, lanes fixed by the task; nothing adjusted here):
+
+```
+lane        ndcg@10  mrr@10  recall@100  p@10    p50ms  p95ms
+and         0.0753   0.0742  0.0784      0.0078  0.01   0.03
+or          0.6937   0.6378  0.9160      0.0866  0.15   0.47
+or-stem     0.6968   0.6380  0.9272      0.0877  0.40   1.11
+or-trigram  0.7628   0.7164  0.9692      0.0905  0.56   0.87
+db size MB: unicode61=0.26 trigram=0.64
+```
+
+Plausibility against NanoMTEB-German BM25 (0.6132): measured `or` 0.6937,
+difference **+0.0805** (below the 0.15 review trigger).
+
+Per-query compares (`node "$REPO/scripts/beir-compare.mjs"
+/tmp/beir-de/govservice.t16.jsonl --a <lane> --b <base>`):
+
+```
+or-stem vs or: W=35 T=275 L=47
+terms 1-3  n=66  W=0 T=62 L=4  or-stem: ndcg@10=0.6181 p@10=0.0773  or: ndcg@10=0.6312 p@10=0.0773
+terms 4-6  n=180  W=20 T=134 L=26  or-stem: ndcg@10=0.6909 p@10=0.0889  or: ndcg@10=0.6797 p@10=0.0867
+terms 7+  n=111  W=15 T=79 L=17  or-stem: ndcg@10=0.7530 p@10=0.0919  or: ndcg@10=0.7537 p@10=0.0919
+or-trigram vs or: W=93 T=232 L=32
+terms 1-3  n=66  W=12 T=53 L=1  or-trigram: ndcg@10=0.6880 p@10=0.0788  or: ndcg@10=0.6312 p@10=0.0773
+terms 4-6  n=180  W=48 T=112 L=20  or-trigram: ndcg@10=0.7464 p@10=0.0894  or: ndcg@10=0.6797 p@10=0.0867
+terms 7+  n=111  W=33 T=67 L=11  or-trigram: ndcg@10=0.8337 p@10=0.0991  or: ndcg@10=0.7537 p@10=0.0919
+or vs and: W=281 T=76 L=0
+terms 1-3  n=66  W=31 T=35 L=0  or: ndcg@10=0.6312 p@10=0.0773  and: ndcg@10=0.2863 p@10=0.0303
+terms 4-6  n=180  W=149 T=31 L=0  or: ndcg@10=0.6797 p@10=0.0867  and: ndcg@10=0.0389 p@10=0.0039
+terms 7+  n=111  W=101 T=10 L=0  or: ndcg@10=0.7537 p@10=0.0919  and: ndcg@10=0.0090 p@10=0.0009
+```
+
+### Facts (no recommendation)
+
+E1-DE (`or` nDCG@10 ≥ `and` + 0.10 on both datasets):
+- GermanDPR: 0.4797 ≥ 0.0263 + 0.10 (gap 0.4534) → **met**.
+- GovService: 0.6937 ≥ 0.0753 + 0.10 (gap 0.6184) → **met**.
+
+E5 (from `docs/ZIEL.md`): ≥ +0.01 nDCG@10 on every untuned dataset, P@10
+not worse, p95 at most 3× `or`, about 50 library lines or fewer. `or-stem`
+was tuned on GermanDPR, so only GovService counts for it; `or-trigram`
+tuned nothing, so both datasets count.
+
+| lane | dataset | ΔnDCG@10 vs `or` | ΔP@10 vs `or` | p95 ratio (lane/or) |
+|------|---------|-----------------:|--------------:|--------------------:|
+| `or-trigram` | GermanDPR | +0.0541 | +0.0040 | 5.61/2.36 = 2.38 |
+| `or-trigram` | GovService | +0.0691 | +0.0039 | 0.87/0.47 = 1.85 |
+| `or-stem` (selected) | GovService | +0.0031 | +0.0011 | 1.11/0.47 = 2.36 |
+
+- `or-trigram`: all three measurable E5 conditions (nDCG, P@10, p95) hold
+  on both untuned datasets; the line-count condition concerns library code
+  and is left to the owner.
+- `or-stem` on GovService: ΔnDCG@10 +0.0031 is below the +0.01 threshold —
+  E5 not met on GovService.
+- Database size, trigram vs unicode61 (`dbBytes` from the bench JSON):
+  GermanDPR 20897792/8060928 = **2.59×**, GovService 675840/270336 =
+  **2.50×** (reported per ZIEL.md because a trigram index is larger).
