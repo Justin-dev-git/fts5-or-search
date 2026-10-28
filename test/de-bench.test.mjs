@@ -6,6 +6,11 @@
 //   q2 "Ausweis" (rel f "Personalausweis"): only trigram matches (1).
 //   q3 "Hundesteuer bezahlen" (rel a): no doc has both terms, so and = 0;
 //      every OR lane ranks a first (1).
+// test/fixtures/beir-de-lanes = beir-de-mini + q4 (T17):
+//   q4 "Fahrrad Termin Anmeldung" (rel g2, the only doc with all three
+//      terms): BM25 puts g1 "Fahrrad, Fahrrad, Fahrrad." first (-2.8987 vs
+//      -2.1502), so every plain lane gets 0.6309; the coverage re-rank lanes
+//      hybrid and hybrid-expanded move g2 to rank 1 (coverage 3 vs 1).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -15,6 +20,8 @@ const bench = fileURLToPath(new URL('../scripts/beir-bench.mjs', import.meta.url
 const data = fileURLToPath(new URL('./fixtures/beir-de-mini', import.meta.url));
 const stub = fileURLToPath(new URL('./fixtures/de/stub-stemmer.mjs', import.meta.url));
 const mini = fileURLToPath(new URL('./fixtures/beir-mini', import.meta.url));
+const lanesFx = fileURLToPath(new URL('./fixtures/beir-de-lanes', import.meta.url));
+const LANES = ['and', 'or', 'or-stem', 'or-stem-paradigm', 'or-trigram', 'hybrid', 'hybrid-expanded'];
 
 function run(args) {
   try {
@@ -30,11 +37,26 @@ test('lang de: lanes and reference nDCG@10 on beir-de-mini', () => {
   assert.equal(r.code, 0, r.stderr);
   const j = lastJson(r.stdout);
   assert.equal(j.lang, 'de');
-  assert.deepEqual(Object.keys(j.lanes), ['and', 'or', 'or-stem', 'or-stem-paradigm', 'or-trigram']);
+  assert.deepEqual(Object.keys(j.lanes), LANES);
   const nd = Object.fromEntries(Object.entries(j.lanes).map(([k, v]) => [k, v.ndcg10]));
-  assert.deepEqual(nd, { and: 0, or: 0.5436, 'or-stem': 0.6667, 'or-stem-paradigm': 0.6667, 'or-trigram': 0.877 });
+  assert.deepEqual(nd, {
+    and: 0, or: 0.5436, 'or-stem': 0.6667, 'or-stem-paradigm': 0.6667, 'or-trigram': 0.877,
+    hybrid: 0.5436, 'hybrid-expanded': 0.6667,
+  });
   assert.equal(j.lanes['or-trigram'].recall100, 1);
   assert.equal(j.lanes.or.recall100, 0.6667);
+});
+
+test('lang de: every lane family is exercised on beir-de-lanes (re-rank must change q4)', () => {
+  const r = run(['--data', lanesFx, '--lang', 'de', '--stemmer', stub, '--repeat', '1', '--json']);
+  assert.equal(r.code, 0, r.stderr);
+  const j = lastJson(r.stdout);
+  assert.deepEqual(Object.keys(j.lanes), LANES);
+  const nd = Object.fromEntries(Object.entries(j.lanes).map(([k, v]) => [k, v.ndcg10]));
+  assert.deepEqual(nd, {
+    and: 0.25, or: 0.5655, 'or-stem': 0.6577, 'or-stem-paradigm': 0.6577, 'or-trigram': 0.8155,
+    hybrid: 0.6577, 'hybrid-expanded': 0.75,
+  });
 });
 
 test('lang de needs --stemmer and rejects --title-weights; English output has no lang field', () => {

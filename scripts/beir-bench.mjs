@@ -9,9 +9,11 @@
 //        node scripts/beir-bench.mjs --data <dir> --lang de --stemmer <path/to/stem-german.mjs> [...]
 //   --lang de  German lanes instead of the English ones: and, or, or-stem,
 //           or-stem-paradigm (german-fts5-stemmer variants, ORed), or-trigram
-//           (FTS5 trigram tokenizer). Index tokenizer 'unicode61', stopwords
-//           = the stemmer's STOPWORDS for every lane. The stemmer module is
-//           loaded from --stemmer at run time; it is not a dependency.
+//           (FTS5 trigram tokenizer), hybrid and hybrid-expanded (coverage
+//           re-rank as in german-fts5-stemmer's bench.mjs, T17). Index
+//           tokenizer 'unicode61', stopwords = the stemmer's STOPWORDS for
+//           every lane. The stemmer module is loaded from --stemmer at run
+//           time; it is not a dependency.
 //   --json  additionally prints one JSON line as the LAST output line:
 //           { dataset, docs, queries, lanes: { <lane>:
 //             { ndcg10, mrr10, recall100, p50ms, p95ms } } }
@@ -182,11 +184,28 @@ function lanesFor(db, docCount) {
 // compounds such as "Personalausweis" contain "ausweis").
 const quoteTerm = (t) => `"${t.replaceAll('"', '')}"`;
 
+// T17: re-rank exactly as the lanes fts-hybrid / fts-hybrid-expanded in
+// german-fts5-stemmer's bench.mjs: pool = 50 rows (its K*5 with K=10),
+// coverage = number of term groups with ANY variant occurring as a substring
+// of the lower-cased row text (not folded), score = coverage*1000 + 1/(i+1).
+// Recall@100 of these lanes is therefore capped by the 50-row pool.
+const DE_HYBRID_POOL = 50;
+function substringCoverageRerank(rows, groups) {
+  return rows
+    .map((r, i) => {
+      const low = String(r.content ?? '').toLowerCase();
+      const coverage = groups.filter((u) => u.some((v) => low.includes(v))).length;
+      return { r, score: coverage * 1000 + 1 / (i + 1) };
+    })
+    .sort((a, b) => b.score - a.score)
+    .map((x) => x.r);
+}
+
 function lanesForDe(corpus, stem) {
   const de = { stopwords: stem.STOPWORDS };
   const prep = (db) => {
     const stmt = db.prepare('SELECT rowid AS rid, id, content, rank FROM docs WHERE docs MATCH ? ORDER BY rank LIMIT ?');
-    return (match) => stmt.all(match, K);
+    return (match, limit = K) => stmt.all(match, limit);
   };
   const dbUni = loadCorpus(corpus, 'unicode61');
   const dbTri = loadCorpus(corpus, 'trigram remove_diacritics 1');
@@ -204,6 +223,19 @@ function lanesForDe(corpus, stem) {
       'or-stem': (q) => search(stemMatch(q, false)),
       'or-stem-paradigm': (q) => search(stemMatch(q, true)),
       'or-trigram': (q) => searchTri(buildOrMatch(q, de)),
+      // coverage re-rank without stemmer: groups are the single `or` terms
+      hybrid: (q) => {
+        const ts = tokenize(q, de);
+        return ts.length ? substringCoverageRerank(search(buildOrMatch(q, de), DE_HYBRID_POOL), ts.map((t) => [t])) : [];
+      },
+      // stemmer-expanded OR pool (match string built like the original:
+      // groups ORed, duplicates kept) + variant-coverage re-rank
+      'hybrid-expanded': (q) => {
+        const groups = stem.queryTermVariants(q);
+        if (!groups.length) return [];
+        const orM = groups.map((u) => `(${u.map(quoteTerm).join(' OR ')})`).join(' OR ');
+        return substringCoverageRerank(search(orM, DE_HYBRID_POOL), groups);
+      },
     },
     tokOpts: de,
     // whole in-memory database incl. stored text; the difference is index size

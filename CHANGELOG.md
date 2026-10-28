@@ -17,6 +17,13 @@ Behavior changes to public functions are marked **Behavior change**.
   viewer rows (SQuAD-style) into the BEIR layout.
 - Tests: `test/de-bench.test.mjs` (stub stemmer, reference values on
   `test/fixtures/beir-de-mini`), `test/to-beir.test.mjs`.
+- German lanes `hybrid` and `hybrid-expanded` (T17): the coverage re-rank
+  of german-fts5-stemmer's `bench.mjs` (`fts-hybrid`, `fts-hybrid-expanded`)
+  reproduced exactly — 50-row pool, substring coverage per term group on the
+  lower-cased text, `coverage*1000 + 1/(i+1)`. T16 had left out
+  `hybrid-expanded`, the best lane on the private corpus. New fixture
+  `test/fixtures/beir-de-lanes` (q4: only the re-rank lanes rank the
+  full-coverage document first; a broken coverage fails the test).
 
 ## 0.2.0 (unreleased)
 
