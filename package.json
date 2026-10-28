@@ -1,0 +1,17 @@
+{
+  "name": "fts5-hybrid-search",
+  "version": "0.2.0",
+  "description": "Injection-safe OR match builder for SQLite FTS5 with BM25 ranking, validated on four BEIR datasets against strict AND and several coverage-based alternatives.",
+  "type": "module",
+  "main": "lib/hybrid.mjs",
+  "exports": { ".": "./lib/hybrid.mjs" },
+  "scripts": {
+    "test": "node --test",
+    "check": "node scripts/check.mjs",
+    "bench": "node scripts/corpus-from-md.mjs --src sample-corpus --out fts5-hybrid-demo.db --force && node bench.mjs --db fts5-hybrid-demo.db --cases cases.json --k 3"
+  },
+  "engines": { "node": ">=22.13" },
+  "license": "MIT",
+  "keywords": ["sqlite", "fts5", "full-text-search", "retrieval", "bm25", "beir"],
+  "files": ["lib/hybrid.mjs", "bench.mjs", "scripts/corpus-from-md.mjs"]
+}

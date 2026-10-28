@@ -1,0 +1,6 @@
+node_modules/
+*.sqlite
+.DS_Store
+fts5-hybrid-demo.db
+CHANGE-REPORT-*.md
+*.queries.local.json

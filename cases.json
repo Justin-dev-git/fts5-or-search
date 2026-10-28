@@ -1,0 +1,66 @@
+[
+  {
+    "id": "loose-backup-verify",
+    "query": "how do I trust a snapshot of the database",
+    "must_contain": [
+      "integrity check"
+    ],
+    "_note": "query shares 'snapshot'/'database' verbatim with the doc, but AND still misses: 'trust' and 'how' match nothing, and AND requires every term; OR+coverage lands on the backups doc"
+  },
+  {
+    "id": "and-kills-long-question",
+    "query": "why does my long question fail on the rarest word",
+    "must_contain": [
+      "rarest word"
+    ],
+    "_note": "long user-style phrasing vs terse doc wording"
+  },
+  {
+    "id": "coverage-dominates",
+    "query": "score candidates by fraction of terms they contain",
+    "must_contain": [
+      "fraction of query terms"
+    ],
+    "_note": "rerank doc"
+  },
+  {
+    "id": "no-german-stemmer",
+    "query": "many languages have no built-in stemmer",
+    "must_contain": [
+      "porter"
+    ],
+    "_note": "stemming doc"
+  },
+  {
+    "id": "measure-tokenizer",
+    "query": "do not assume tokenizer behavior, probe it",
+    "must_contain": [
+      "probes"
+    ],
+    "_note": "tokenizers doc"
+  },
+  {
+    "id": "idempotent-import",
+    "query": "crashed importer run can be re-executed safely",
+    "must_contain": [
+      "idempotent"
+    ],
+    "_note": "indexing doc"
+  },
+  {
+    "id": "honest-bench",
+    "query": "single lucky timing run flatters cold caches",
+    "must_contain": [
+      "worst-of-N"
+    ],
+    "_note": "benchmarks doc"
+  },
+  {
+    "id": "exact-hit-both-lanes",
+    "query": "bm25 rank column relevance",
+    "must_contain": [
+      "bm25"
+    ],
+    "_note": "control case AND also solves — hybrid must not regress it"
+  }
+]
