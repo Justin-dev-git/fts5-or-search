@@ -69,6 +69,12 @@ und NFCorpus, getestet auf FiQA und TREC-COVID.
   überholt.
 - **Empfehlung:** OR mit FTS5-BM25, also `buildOrMatch(q)` mit
   `ORDER BY rank`.
+- **Vorbehalt (nach T17):** Die `hybrid`-Lanes aus T11 bis T14 riefen
+  `hybridSearch` mit k=100 auf. Sie sortierten also einen Pool von 500
+  Treffern um, nicht die 50 einer normalen Top-10-Suche. Auf Deutsch hilft
+  das Re-Rank mit einem 50er-Pool (T17). T18 misst das englische Re-Rank mit
+  k=10 nach. Bis dahin ist E2 für die übliche Konfiguration offen, und die
+  Empfehlung oben steht unter Vorbehalt.
 
 ## Deutsch (Entwurf, 28.10.2026)
 Die Leitlinie gilt unverändert. Die Frage lautet: Schlägt eine Erweiterung
