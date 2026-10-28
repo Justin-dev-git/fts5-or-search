@@ -12,6 +12,13 @@ Behavior changes to public functions are marked **Behavior change**.
 - README wording tightened: no tested extension is "measurably better"
   (instead of "best"/"wins"), Recall@100 ratio stated per dataset, Node
   requirement matches `engines` (22.13).
+- File names follow the new name: `lib/hybrid.mjs` → `lib/or-search.mjs`,
+  `test/hybrid.test.mjs` → `test/or-search.test.mjs`, demo database
+  `fts5-or-demo.db`. `import … from 'fts5-or-search'` is unaffected; deep
+  imports of `lib/hybrid.mjs` must switch to the new path. Function and lane
+  names (`hybridSearch`, `hybrid`, `hybrid-fts`) stay, because the
+  measurements refer to them. `tasks/` and `docs/VALIDATION.md` keep the old
+  paths as historical records.
 
 ### Changed: recommendation is plain OR with FTS5 BM25 (docs only, no API change)
 - The README was rewritten around the BEIR measurements: plain quoted OR

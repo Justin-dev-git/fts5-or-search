@@ -18,7 +18,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { performance } from 'node:perf_hooks';
 import {
   sanitizeMatch, buildOrMatch, hybridSearch, makeFtsTermPresent, tokenize,
-} from '../lib/hybrid.mjs';
+} from '../lib/or-search.mjs';
 import { evaluate, ndcgAtK, precisionAtK } from './metrics.mjs';
 
 const K = 100; // every lane returns at most 100 results

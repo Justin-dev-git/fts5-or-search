@@ -24,7 +24,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { performance } from 'node:perf_hooks';
 import { readFileSync } from 'node:fs';
-import { buildOrMatch, sanitizeMatch, hybridSearch } from './lib/hybrid.mjs';
+import { buildOrMatch, sanitizeMatch, hybridSearch } from './lib/or-search.mjs';
 
 const argv = process.argv.slice(2);
 const arg = (n, d) => { const i = argv.indexOf(`--${n}`); return i >= 0 ? argv[i + 1] : d; };

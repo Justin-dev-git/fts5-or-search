@@ -6,7 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { makeFtsTermPresent, coverageRerank } from '../lib/hybrid.mjs';
+import { makeFtsTermPresent, coverageRerank } from '../lib/or-search.mjs';
 
 function mkdb(texts) {
   const db = new DatabaseSync(':memory:');

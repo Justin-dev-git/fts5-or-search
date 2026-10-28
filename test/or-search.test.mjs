@@ -1,8 +1,8 @@
-// Unit checks for the hybrid retrieval primitives.
-// Run: node --test test/hybrid.test.mjs
+// Unit checks for the fts5-or-search primitives (match builders and the measured re-rank helpers).
+// Run: node --test test/or-search.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { tokenize, sanitizeMatch, buildOrMatch, coverageRerank, hybridSearch } from '../lib/hybrid.mjs';
+import { tokenize, sanitizeMatch, buildOrMatch, coverageRerank, hybridSearch } from '../lib/or-search.mjs';
 
 test('tokenize: strips punctuation, keeps hyphenated compounds, drops stopwords/1-char', () => {
   assert.deepEqual(tokenize('Install the memory-lancedb plugin!'), ['install', 'memory-lancedb', 'plugin']);

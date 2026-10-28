@@ -16,7 +16,7 @@ const argv = process.argv.slice(2);
 const arg = (n, d) => { const i = argv.indexOf(`--${n}`); return i >= 0 ? argv[i + 1] : d; };
 const has = (n) => argv.includes(`--${n}`);
 const src = arg('src', null);
-const out = arg('out', join(tmpdir(), 'fts5-hybrid-demo.db'));
+const out = arg('out', join(tmpdir(), 'fts5-or-demo.db'));
 const tokenizer = arg('tokenizer', 'porter unicode61');
 if (!src) { console.error('usage: corpus-from-md.mjs --src <dir> [--out db] [--force] [--tokenizer spec]'); process.exit(2); }
 if (!/^[A-Za-z0-9 _-]+$/.test(tokenizer)) {

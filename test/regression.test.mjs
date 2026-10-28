@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import * as H from '../lib/hybrid.mjs';
+import * as H from '../lib/or-search.mjs';
 
 function mkdb(docs) {
   const db = new DatabaseSync(':memory:');
