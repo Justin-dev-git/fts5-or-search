@@ -1,0 +1,17 @@
+[
+  {"question": "Wer schrieb den Faust?", "answers": ["Goethe"],
+   "positive_ctxs": [{"title": "Goethe", "text": "Johann Wolfgang von Goethe schrieb den Faust.", "passage_id": "p1"}],
+   "negative_ctxs": [],
+   "hard_negative_ctxs": [{"title": "Schiller", "text": "Friedrich Schiller starb 1805 in Weimar.", "passage_id": "p2"},
+                          {"title": "Weimar", "text": "Weimar liegt in Thüringen.", "passage_id": "p3"}]},
+  {"question": "Wann starb Schiller?", "answers": ["1805"],
+   "positive_ctxs": [{"title": "Schiller", "text": "Friedrich Schiller starb 1805 in Weimar.", "passage_id": "p2"}],
+   "negative_ctxs": [],
+   "hard_negative_ctxs": [{"title": "Goethe", "text": "Johann Wolfgang von Goethe schrieb den Faust.", "passage_id": "p1"},
+                          {"title": "Jena", "text": "Jena hat eine Universität.", "passage_id": 4}]},
+  {"question": "Frage ohne Antwortabschnitt", "answers": [],
+   "positive_ctxs": [],
+   "negative_ctxs": [],
+   "hard_negative_ctxs": [{"title": "Jena", "text": "Abweichender Text unter derselben ID.", "passage_id": "4"},
+                          {"title": "Erfurt", "text": "Erfurt ist die Landeshauptstadt.", "passage_id": "p5"}]}
+]

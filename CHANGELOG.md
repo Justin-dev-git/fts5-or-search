@@ -3,6 +3,21 @@
 All notable changes to this project are documented here.
 Behavior changes to public functions are marked **Behavior change**.
 
+## Unreleased
+
+### Added: German measurement mode (bench only, no library change)
+- `scripts/beir-bench.mjs --lang de --stemmer <path/to/stem-german.mjs>`:
+  lanes `and`, `or`, `or-stem`, `or-stem-paradigm` (german-fts5-stemmer
+  variants, ORed) and `or-trigram` (FTS5 `trigram` tokenizer) on a
+  `unicode61` index, one stopword list for all lanes; reports the in-memory
+  database size of both indexes. The stemmer is loaded at run time and is not
+  a dependency. English mode is unchanged (rankings and per-query output
+  byte-identical on beir-mini, beir-blend and a 5 000-doc synthetic corpus).
+- `scripts/to-beir.mjs`: converts GermanDPR JSON and Hugging Face dataset
+  viewer rows (SQuAD-style) into the BEIR layout.
+- Tests: `test/de-bench.test.mjs` (stub stemmer, reference values on
+  `test/fixtures/beir-de-mini`), `test/to-beir.test.mjs`.
+
 ## 0.2.0 (unreleased)
 
 ### Changed: package and repository renamed to fts5-or-search
