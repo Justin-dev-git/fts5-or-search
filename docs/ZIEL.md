@@ -82,6 +82,12 @@ das einfache OR auch auf Deutsch?
     mit OR verknüpft. Die beiden zählen als eine Familie.
   - `or-trigram`: der FTS5-Tokenizer `trigram`, also Teilwort-Treffer, etwa
     „Ausweis“ in „Personalausweis“.
+  - Ergänzt mit T17: `hybrid-expanded`, das ist Stemmer-OR plus
+    Coverage-Re-Rank, genau wie `fts-hybrid-expanded` in german-fts5-stemmer
+    und die beste Lane auf dem privaten Korpus. Dazu `hybrid`, dasselbe
+    Re-Rank ohne Stemmer, damit sich die Wirkung zuordnen lässt. Beide
+    wurden auf keinem der öffentlichen Datensätze abgestimmt, für sie
+    zählen also beide.
 - **Daten:**
   - **GermanDPR** (Test-Split, CC BY 4.0) ist der Auswahldatensatz. Nur hier
     wird zwischen `or-stem` und `or-stem-paradigm` gewählt.
