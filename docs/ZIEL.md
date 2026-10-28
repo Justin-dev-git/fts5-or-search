@@ -69,3 +69,39 @@ und NFCorpus, getestet auf FiQA und TREC-COVID.
   überholt.
 - **Empfehlung:** OR mit FTS5-BM25, also `buildOrMatch(q)` mit
   `ORDER BY rank`.
+
+## Deutsch (Entwurf, 28.10.2026)
+Die Leitlinie gilt unverändert. Die Frage lautet: Schlägt eine Erweiterung
+das einfache OR auch auf Deutsch?
+
+- **Referenz:** `or` auf einem `unicode61`-Index. Er faltet Umlaute
+  (ä→a), ß bleibt erhalten. Alle Lanes nutzen dieselbe Stoppwortliste, die
+  `STOPWORDS` aus german-fts5-stemmer.
+- **Erweiterungen:**
+  - `or-stem` und `or-stem-paradigm`: alle Varianten aus german-fts5-stemmer,
+    mit OR verknüpft. Die beiden zählen als eine Familie.
+  - `or-trigram`: der FTS5-Tokenizer `trigram`, also Teilwort-Treffer, etwa
+    „Ausweis“ in „Personalausweis“.
+- **Daten:**
+  - **GermanDPR** (Test-Split, CC BY 4.0) ist der Auswahldatensatz. Nur hier
+    wird zwischen `or-stem` und `or-stem-paradigm` gewählt.
+  - **GermanGovService** (LHM-Dienstleistungen-QA, Test-Split, MIT) ist der
+    Testdatensatz. Dort wird nichts nachjustiert.
+  - `or-trigram` hat nichts abzustimmen. Für ihn zählen also beide
+    Datensätze als nicht abgestimmt.
+- **E1-DE:** `or` nDCG@10 ≥ `and` + 0.10 auf beiden Datensätzen.
+- **E5** gilt unverändert, und zwar auf jedem Datensatz, der für die
+  jeweilige Lane nicht abgestimmt wurde. Zusätzlich wird die
+  Datenbankgröße berichtet, denn ein Trigram-Index ist größer.
+  `or-stem` bräuchte german-fts5-stemmer als zusätzliches Paket (mit
+  Vokabelliste). Ob das den Nutzen wert ist, entscheidet der Owner.
+- **Plausibilität:** `or` wird grob mit dem BM25-Wert aus NanoMTEB-German
+  verglichen: GermanDPR 0.4647, GovService 0.6132. Das sind Teilmengen mit
+  200 Anfragen, und die Implementierung ist unbekannt. Liegt die Abweichung
+  über 0.15, wird erst der Aufbau geprüft.
+- **Bekannte Grenzen:**
+  - Wie die GermanDPR-Negativbeispiele ausgewählt wurden, ist hier nicht
+    belegt.
+  - GovService ist klein (105 Dokumente).
+  - Erfüllt eine Lane E5 nur knapp (unter +0.02) oder widersprechen sich die
+    Datensätze, kommt GerDaLIR (Recht, MIT) als weiterer Testdatensatz dazu.
