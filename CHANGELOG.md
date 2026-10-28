@@ -24,6 +24,16 @@ Behavior changes to public functions are marked **Behavior change**.
   `hybrid-expanded`, the best lane on the private corpus. New fixture
   `test/fixtures/beir-de-lanes` (q4: only the re-rank lanes rank the
   full-coverage document first; a broken coverage fails the test).
+- English re-rank lanes at the library's normal top-10 use (T18):
+  `hybrid-k10`, `hybrid-nofloor-k10`, `hybrid-fts-k10` (`hybridSearch` with
+  k=10, i.e. an OR pool of 50) and `hybrid-substr-k10` (the German T17
+  re-rank on English). The `hybrid*` lanes of T11-T14 ran with k=100, so
+  they re-ranked a 500-row pool, which is not how `hybridSearch` is used for a
+  top-10 result. Fixture `test/fixtures/beir-pool` shows the effect: pool 500
+  pulls a long all-terms document from BM25 rank 57 above the relevant one,
+  pool 50 does not (unless the AND floor adds it back).
+- German lane `hybrid-trigram` (T18): trigram OR pool + the same substring
+  coverage re-rank.
 
 ## 0.2.0 (unreleased)
 

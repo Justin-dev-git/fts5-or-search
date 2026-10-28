@@ -174,6 +174,21 @@ function lanesFor(db, docCount) {
       lanes[`${fam}-${lambda}`] = (q) => blend(q, lambda, fam === 'blendidf');
     }
   }
+
+  // T18: the re-rank lanes at the library's normal top-10 use (k=10, OR pool
+  // k*5 = 50). The k=K lanes above re-rank a 500-row pool, which lets
+  // coverage pull low-BM25 documents into the top 10. These lanes return 10
+  // rows (hybrid-substr-k10: the 50-row pool), so only the @10 metrics are
+  // comparable with the other lanes; Recall@100 is not.
+  const K10 = 10;
+  lanes['hybrid-k10'] = (q) => hybridSearch(search, q, getText, { k: K10 });
+  lanes['hybrid-nofloor-k10'] = (q) => hybridSearch(search, q, getText, { k: K10, andFloor: false });
+  lanes['hybrid-fts-k10'] = (q) => hybridSearch(search, q, getText, { k: K10, termPresent });
+  // the German T17 re-rank (substring coverage, pool 50, no AND floor) on English
+  lanes['hybrid-substr-k10'] = (q) => {
+    const ts = tokenize(q);
+    return ts.length ? substringCoverageRerank(search(buildOrMatch(q), SUBSTR_RERANK_POOL), ts.map((t) => [t])) : [];
+  };
   return lanes;
 }
 
@@ -189,7 +204,7 @@ const quoteTerm = (t) => `"${t.replaceAll('"', '')}"`;
 // coverage = number of term groups with ANY variant occurring as a substring
 // of the lower-cased row text (not folded), score = coverage*1000 + 1/(i+1).
 // Recall@100 of these lanes is therefore capped by the 50-row pool.
-const DE_HYBRID_POOL = 50;
+const SUBSTR_RERANK_POOL = 50;
 function substringCoverageRerank(rows, groups) {
   return rows
     .map((r, i) => {
@@ -226,7 +241,7 @@ function lanesForDe(corpus, stem) {
       // coverage re-rank without stemmer: groups are the single `or` terms
       hybrid: (q) => {
         const ts = tokenize(q, de);
-        return ts.length ? substringCoverageRerank(search(buildOrMatch(q, de), DE_HYBRID_POOL), ts.map((t) => [t])) : [];
+        return ts.length ? substringCoverageRerank(search(buildOrMatch(q, de), SUBSTR_RERANK_POOL), ts.map((t) => [t])) : [];
       },
       // stemmer-expanded OR pool (match string built like the original:
       // groups ORed, duplicates kept) + variant-coverage re-rank
@@ -234,7 +249,13 @@ function lanesForDe(corpus, stem) {
         const groups = stem.queryTermVariants(q);
         if (!groups.length) return [];
         const orM = groups.map((u) => `(${u.map(quoteTerm).join(' OR ')})`).join(' OR ');
-        return substringCoverageRerank(search(orM, DE_HYBRID_POOL), groups);
+        return substringCoverageRerank(search(orM, SUBSTR_RERANK_POOL), groups);
+      },
+      // T18: trigram OR pool + the same substring coverage re-rank (substring
+      // coverage matches trigram's substring semantics)
+      'hybrid-trigram': (q) => {
+        const ts = tokenize(q, de);
+        return ts.length ? substringCoverageRerank(searchTri(buildOrMatch(q, de), SUBSTR_RERANK_POOL), ts.map((t) => [t])) : [];
       },
     },
     tokOpts: de,

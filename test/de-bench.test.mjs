@@ -11,6 +11,9 @@
 //      terms): BM25 puts g1 "Fahrrad, Fahrrad, Fahrrad." first (-2.8987 vs
 //      -2.1502), so every plain lane gets 0.6309; the coverage re-rank lanes
 //      hybrid and hybrid-expanded move g2 to rank 1 (coverage 3 vs 1).
+// hybrid-trigram (T18) = or-trigram pool + the same re-rank: beir-de-mini
+//   0.877 (as or-trigram), beir-de-lanes 0.9077 (q2 via trigram, q4 via
+//   re-rank; only q1 stays at 0.6309).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -21,7 +24,7 @@ const data = fileURLToPath(new URL('./fixtures/beir-de-mini', import.meta.url));
 const stub = fileURLToPath(new URL('./fixtures/de/stub-stemmer.mjs', import.meta.url));
 const mini = fileURLToPath(new URL('./fixtures/beir-mini', import.meta.url));
 const lanesFx = fileURLToPath(new URL('./fixtures/beir-de-lanes', import.meta.url));
-const LANES = ['and', 'or', 'or-stem', 'or-stem-paradigm', 'or-trigram', 'hybrid', 'hybrid-expanded'];
+const LANES = ['and', 'or', 'or-stem', 'or-stem-paradigm', 'or-trigram', 'hybrid', 'hybrid-expanded', 'hybrid-trigram'];
 
 function run(args) {
   try {
@@ -41,7 +44,7 @@ test('lang de: lanes and reference nDCG@10 on beir-de-mini', () => {
   const nd = Object.fromEntries(Object.entries(j.lanes).map(([k, v]) => [k, v.ndcg10]));
   assert.deepEqual(nd, {
     and: 0, or: 0.5436, 'or-stem': 0.6667, 'or-stem-paradigm': 0.6667, 'or-trigram': 0.877,
-    hybrid: 0.5436, 'hybrid-expanded': 0.6667,
+    hybrid: 0.5436, 'hybrid-expanded': 0.6667, 'hybrid-trigram': 0.877,
   });
   assert.equal(j.lanes['or-trigram'].recall100, 1);
   assert.equal(j.lanes.or.recall100, 0.6667);
@@ -55,7 +58,7 @@ test('lang de: every lane family is exercised on beir-de-lanes (re-rank must cha
   const nd = Object.fromEntries(Object.entries(j.lanes).map(([k, v]) => [k, v.ndcg10]));
   assert.deepEqual(nd, {
     and: 0.25, or: 0.5655, 'or-stem': 0.6577, 'or-stem-paradigm': 0.6577, 'or-trigram': 0.8155,
-    hybrid: 0.6577, 'hybrid-expanded': 0.75,
+    hybrid: 0.6577, 'hybrid-expanded': 0.75, 'hybrid-trigram': 0.9077,
   });
 });
 
