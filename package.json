@@ -1,5 +1,5 @@
 {
-  "name": "fts5-hybrid-search",
+  "name": "fts5-or-search",
   "version": "0.2.0",
   "description": "Injection-safe OR match builder for SQLite FTS5 with BM25 ranking, validated on four BEIR datasets against strict AND and several coverage-based alternatives.",
   "type": "module",

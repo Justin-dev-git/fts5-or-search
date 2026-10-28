@@ -5,6 +5,14 @@ Behavior changes to public functions are marked **Behavior change**.
 
 ## 0.2.0 (unreleased)
 
+### Changed: package and repository renamed to fts5-or-search
+- The name now matches the recommendation (plain OR with FTS5 BM25). This
+  repository starts from the 0.2.0 tree of the private `fts5-hybrid-search`
+  repository; its commit history is not carried over.
+- README wording tightened: no tested extension is "measurably better"
+  (instead of "best"/"wins"), Recall@100 ratio stated per dataset, Node
+  requirement matches `engines` (22.13).
+
 ### Changed: recommendation is plain OR with FTS5 BM25 (docs only, no API change)
 - The README was rewritten around the BEIR measurements: plain quoted OR
   with `ORDER BY rank` is the documented recommendation.

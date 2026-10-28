@@ -1,4 +1,4 @@
-# Zieldokument – fts5-hybrid-search
+# Zieldokument – fts5-or-search (entstanden als fts5-hybrid-search)
 
 **Status:** Englisch ausgewertet (28.10.2026, siehe „Ergebnis Englisch“).
 Deutsch ist offen. Zweck, Kriterien und Schwellen legt der Owner fest.

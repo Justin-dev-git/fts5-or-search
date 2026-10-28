@@ -1,18 +1,18 @@
-# fts5-hybrid-search
+# fts5-or-search
 
 For natural-language, multi-word queries against SQLite FTS5, the usual
 strict `term1 AND term2 AND …` match string loses almost every relevant
 document — even with Porter stemming enabled. A quoted OR match scored by
-FTS5's built-in BM25 (`ORDER BY rank`) was the best of all variants we
-tested on four BEIR datasets. We also measured coverage re-ranking, soft
-BM25/coverage blends, and title weighting: none of them beat plain OR with
-BM25. The measurements are in `docs/VALIDATION.md` and reproduced below.
+FTS5's built-in BM25 (`ORDER BY rank`) fixes that, and on four BEIR
+datasets none of the tested extensions — coverage re-ranking, soft
+BM25/coverage blends, title weighting — was measurably better than plain OR
+with BM25. The measurements are in `docs/VALIDATION.md` and reproduced below.
 
 ## Quick start
 
 ```js
 import { DatabaseSync } from 'node:sqlite';
-import { buildOrMatch } from 'fts5-hybrid-search';
+import { buildOrMatch } from 'fts5-or-search';
 
 const db = new DatabaseSync('mycorpus.db', { readOnly: true });
 const stmt = db.prepare(
@@ -39,8 +39,9 @@ reference from Thakur et al., 2021 (BEIR).
 | FiQA | 57 638 | 648 | – | 0.2535 | 0.236 |
 | TREC-COVID | 171 332 | 50 | – | 0.6020 | 0.656 |
 
-Recall@100 shows the same picture: strict AND finds only a small fraction
-of the judged documents that OR recovers.
+Recall@100 shows the same picture: strict AND finds far fewer of the judged
+documents than OR — about a fifteenth on SciFact and less than half on
+NFCorpus.
 
 | dataset | `and` | `or` |
 |---|---:|---:|
@@ -49,7 +50,9 @@ of the judged documents that OR recovers.
 
 We tested three families of enhancements on top of OR. Tuning happened only
 on SciFact and NFCorpus; the table shows nDCG@10 on the **untuned**
-datasets. None of them wins.
+datasets. None of them is measurably better: the two blends are at most
+0.0013 above `or` on FiQA and below it on TREC-COVID; the coverage re-ranks
+are clearly worse.
 
 | variant | idea | FiQA | TREC-COVID |
 |---|---|---:|---:|
@@ -97,14 +100,16 @@ npm test      # tokenizing, quoting/injection, rerank semantics
 npm run bench # small demo: 8 docs, 8 curated paraphrases; AND misses 2 of 8
 ```
 
-Requires Node 22 or newer (built-in `node:sqlite`). No dependencies.
+Requires Node 22.13 or newer (built-in `node:sqlite`). No dependencies.
 
 ## How this was built
 
 Every change is a task file in `tasks/` with its own verification command
 (`npm run check -- tasks/<file>.md`). A local coding agent implemented each
 task; every push was reviewed independently. The review of T12 found the
-`makeFtsTermPresent` bug that T14 fixed.
+`makeFtsTermPresent` bug that T14 fixed. Development happened in a private
+repository (`fts5-hybrid-search`); this repository starts from its 0.2.0
+state, with all task files and measurements included.
 
 ## Limitations
 
