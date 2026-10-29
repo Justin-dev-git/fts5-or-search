@@ -19,7 +19,8 @@ for (const f of readdirSync(dir)) {
   rows.push({ lang, size, lane, docs: j.docs, queries: j.queries, ...L, buildMs: j.buildMs, indexBytes: j.indexBytes, reused: j.reusedIndexes });
 }
 const sizeKey = (s) => (s === 'all' ? Infinity : Number(s));
-const laneOrder = ['and', 'or', 'or-trigram', 'hybrid', 'hybrid-expanded'];
+const laneOrder = ['and', 'or', 'or-stem', 'or-trigram', 'hybrid', 'hybrid-fts', 'hybrid-k10', 'hybrid-nofloor-k10',
+  'hybrid-fts-k10', 'hybrid-substr-k10', 'hybrid-expanded', 'hybrid-trigram', 'blend-0.1', 'blendidf-0.1'];
 rows.sort((a, b) => a.lang.localeCompare(b.lang) || sizeKey(a.size) - sizeKey(b.size)
   || laneOrder.indexOf(a.lane) - laneOrder.indexOf(b.lane));
 const f4 = (x) => (x == null ? '–' : x.toFixed(4));

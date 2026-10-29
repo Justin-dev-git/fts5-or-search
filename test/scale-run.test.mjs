@@ -84,15 +84,19 @@ test('scale-run.sh: subsets, id hash, one process per lane, compares, summary; r
     assert.equal(res('subsample-en-5.txt').trim(), 'docs=5 queries=3 qrels=4 rel_docs=4 missing_rel=0');
     assert.equal(res('subsample-de-all.txt').trim(), 'docs=10 queries=2 qrels=3 rel_docs=3 missing_rel=0');
     assert.equal(lastJson(res('en-5.or.txt')).lanes.or.ndcg10, 0.8978);
-    for (const lane of ['and', 'or', 'or-trigram', 'hybrid', 'hybrid-expanded']) {
+    for (const lane of ['and', 'or', 'or-stem', 'or-trigram', 'hybrid', 'hybrid-expanded', 'hybrid-trigram']) {
       assert.ok(existsSync(join(root, 'results', `de-all.${lane}.txt`)), lane);
     }
+    for (const lane of ['hybrid', 'hybrid-fts', 'hybrid-k10', 'hybrid-nofloor-k10', 'hybrid-fts-k10', 'hybrid-substr-k10', 'blend-0.1', 'blendidf-0.1']) {
+      assert.match(res(`compare-en-5.${lane}-vs-or.txt`), new RegExp(`^${lane} vs or: W=`), lane);
+    }
+    assert.match(res('compare-de-5.hybrid-trigram-vs-or-trigram.txt'), /^hybrid-trigram vs or-trigram: W=/);
     assert.match(res('compare-de-5.or-trigram-vs-or.txt'), /^or-trigram vs or: W=\d+ T=\d+ L=\d+/);
     assert.match(res('summary.md'), /\| all \| 10 \| 2 \| or-trigram \|/);
     assert.equal(existsSync(join(root, 'db', 'de-5')), false, 'index dir removed after the size');
     const again = spawnSync('bash', [p('../scripts/scale-run.sh')], { encoding: 'utf8', env: { ...process.env, ...env } });
     assert.equal(again.status, 0);
-    assert.equal((again.stdout.match(/ skip /g) ?? []).length, 14, 'every finished lane is skipped on restart');
+    assert.equal((again.stdout.match(/ skip /g) ?? []).length, 34, 'every finished lane (10 en + 7 de, 2 sizes) is skipped on restart');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
