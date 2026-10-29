@@ -14,13 +14,19 @@
 //           tokenizer 'unicode61', stopwords = the stemmer's STOPWORDS for
 //           every lane. The stemmer module is loaded from --stemmer at run
 //           time; it is not a dependency.
+//   --db-dir <dir>  build the FTS5 databases as files in <dir> (must exist;
+//           existing files are never overwritten) instead of in memory. For
+//           corpora larger than the free RAM (T19). Rankings are the same.
+//   --report-db  also report build time and database size per index
+//           (text line + JSON fields buildMs/dbBytes).
 //   --json  additionally prints one JSON line as the LAST output line:
 //           { dataset, docs, queries, lanes: { <lane>:
 //             { ndcg10, mrr10, recall100, p50ms, p95ms } } }
 //
 // Latency is per query (retrieval + re-rank); p50/p95 per repeat run, and
 // the WORST value over the repeats is reported (cache-bias guard).
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, createReadStream, existsSync, statSync } from 'node:fs';
+import { createInterface } from 'node:readline';
 import { join, basename, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
@@ -35,7 +41,10 @@ const BLEND_POOL = 500; // candidate pool for the blend lanes (T12)
 const BLEND_LAMBDAS = { blend: [0, 0.1, 0.2, 0.5], blendidf: [0.1, 0.2, 0.5] };
 
 function parseArgs(argv) {
-  const out = { data: null, repeat: 3, json: false, perQuery: null, lanes: null, titleWeights: null, lang: 'en', stemmer: null };
+  const out = {
+    data: null, repeat: 3, json: false, perQuery: null, lanes: null, titleWeights: null,
+    lang: 'en', stemmer: null, dbDir: null, reportDb: false,
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--data') out.data = argv[++i];
@@ -45,6 +54,8 @@ function parseArgs(argv) {
     else if (a === '--lanes') out.lanes = argv[++i].split(',').filter(Boolean);
     else if (a === '--lang') out.lang = argv[++i];
     else if (a === '--stemmer') out.stemmer = argv[++i];
+    else if (a === '--db-dir') out.dbDir = argv[++i];
+    else if (a === '--report-db') out.reportDb = true;
     else if (a === '--title-weights') {
       out.titleWeights = argv[++i].split(',').filter(Boolean).map((s) => {
         const w = Number(s);
@@ -58,6 +69,9 @@ function parseArgs(argv) {
   if (!['en', 'de'].includes(out.lang)) throw new Error(`beir-bench: --lang must be en or de, got ${out.lang}`);
   if (out.lang === 'de' && !out.stemmer) throw new Error('beir-bench: --lang de needs --stemmer <path/to/stem-german.mjs>');
   if (out.lang === 'de' && out.titleWeights) throw new Error('beir-bench: --title-weights is English-only');
+  if (out.dbDir && !(existsSync(out.dbDir) && statSync(out.dbDir).isDirectory())) {
+    throw new Error(`beir-bench: --db-dir must be an existing directory: ${out.dbDir}`);
+  }
   if (!Number.isInteger(out.repeat) || out.repeat < 1) {
     throw new Error(`beir-bench: --repeat must be a positive integer, got ${out.repeat}`);
   }
@@ -92,24 +106,59 @@ function percentile(sorted, p) {
   return sorted[idx];
 }
 
-function loadCorpus(docs, tokenizer = 'porter unicode61') {
-  const db = new DatabaseSync(':memory:');
-  db.exec(`CREATE VIRTUAL TABLE docs USING fts5(id UNINDEXED, content, tokenize='${tokenizer}')`);
-  const ins = db.prepare('INSERT INTO docs (id, content) VALUES (?, ?)');
-  db.exec('BEGIN');
-  for (const d of docs) ins.run(String(d._id), `${d.title ?? ''}\n${d.text ?? ''}`);
-  db.exec('COMMIT');
+// T19: the corpus is streamed line by line (a multi-GB corpus.jsonl does not
+// fit into one JS string). Same rows, same order as the former readJsonl().
+async function* corpusRows(path) {
+  const rl = createInterface({ input: createReadStream(path, { encoding: 'utf8' }), crlfDelay: Infinity });
+  for await (const line of rl) {
+    const t = line.trim();
+    if (t) yield JSON.parse(t);
+  }
+}
+
+// In memory by default; with --db-dir a fresh file per index (never reused or
+// overwritten). journal/synchronous off only for the file build: speed, no
+// effect on the index content.
+function openDb(dbDir, name) {
+  if (!dbDir) return new DatabaseSync(':memory:');
+  const file = join(dbDir, `${name}.db`);
+  if (existsSync(file)) throw new Error(`beir-bench: ${file} exists; remove it or use another --db-dir`);
+  const db = new DatabaseSync(file);
+  db.exec('PRAGMA journal_mode = OFF; PRAGMA synchronous = OFF');
   return db;
 }
 
+const dbBytesOf = (db) => db.prepare('PRAGMA page_count').get().page_count * db.prepare('PRAGMA page_size').get().page_size;
+
+// Every built index is recorded here for --report-db: name, ms, db.
+const builtIndexes = [];
+
+async function loadCorpus(corpusPath, tokenizer = 'porter unicode61', { dbDir = null, name = 'index' } = {}) {
+  const t0 = performance.now();
+  const db = openDb(dbDir, name);
+  db.exec(`CREATE VIRTUAL TABLE docs USING fts5(id UNINDEXED, content, tokenize='${tokenizer}')`);
+  const ins = db.prepare('INSERT INTO docs (id, content) VALUES (?, ?)');
+  let docs = 0;
+  db.exec('BEGIN');
+  for await (const d of corpusRows(corpusPath)) {
+    ins.run(String(d._id), `${d.title ?? ''}\n${d.text ?? ''}`);
+    docs++;
+  }
+  db.exec('COMMIT');
+  builtIndexes.push({ name, ms: performance.now() - t0, db });
+  return { db, docs };
+}
+
 // T13: separate title/text columns so bm25() can weight the title column.
-function loadCorpusSplit(docs) {
-  const db2 = new DatabaseSync(':memory:');
+async function loadCorpusSplit(corpusPath, { dbDir = null, name = 'split' } = {}) {
+  const t0 = performance.now();
+  const db2 = openDb(dbDir, name);
   db2.exec("CREATE VIRTUAL TABLE docs2 USING fts5(id UNINDEXED, title, text, tokenize='porter unicode61')");
   const ins = db2.prepare('INSERT INTO docs2 (id, title, text) VALUES (?, ?, ?)');
   db2.exec('BEGIN');
-  for (const d of docs) ins.run(String(d._id), d.title ?? '', d.text ?? '');
+  for await (const d of corpusRows(corpusPath)) ins.run(String(d._id), d.title ?? '', d.text ?? '');
   db2.exec('COMMIT');
+  builtIndexes.push({ name, ms: performance.now() - t0, db: db2 });
   return db2;
 }
 
@@ -216,15 +265,14 @@ function substringCoverageRerank(rows, groups) {
     .map((x) => x.r);
 }
 
-function lanesForDe(corpus, stem) {
+async function lanesForDe(corpusPath, stem, dbOpts) {
   const de = { stopwords: stem.STOPWORDS };
   const prep = (db) => {
     const stmt = db.prepare('SELECT rowid AS rid, id, content, rank FROM docs WHERE docs MATCH ? ORDER BY rank LIMIT ?');
     return (match, limit = K) => stmt.all(match, limit);
   };
-  const dbUni = loadCorpus(corpus, 'unicode61');
-  const dbTri = loadCorpus(corpus, 'trigram remove_diacritics 1');
-  const bytesOf = (db) => db.prepare('PRAGMA page_count').get().page_count * db.prepare('PRAGMA page_size').get().page_size;
+  const { db: dbUni, docs } = await loadCorpus(corpusPath, 'unicode61', { ...dbOpts, name: `${dbOpts.prefix}-unicode61` });
+  const { db: dbTri } = await loadCorpus(corpusPath, 'trigram remove_diacritics 1', { ...dbOpts, name: `${dbOpts.prefix}-trigram` });
   const search = prep(dbUni);
   const searchTri = prep(dbTri);
   const stemMatch = (q, paradigm) => {
@@ -259,14 +307,16 @@ function lanesForDe(corpus, stem) {
       },
     },
     tokOpts: de,
-    // whole in-memory database incl. stored text; the difference is index size
-    dbBytes: { unicode61: bytesOf(dbUni), trigram: bytesOf(dbTri) },
+    docs,
+    // whole database incl. stored text; the difference is index size
+    dbBytes: { unicode61: dbBytesOf(dbUni), trigram: dbBytesOf(dbTri) },
   };
 }
 
 async function run() {
-  const { data, repeat, json, perQuery, lanes: laneFilter, titleWeights, lang, stemmer } = parseArgs(process.argv.slice(2));
-  const corpus = readJsonl(join(data, 'corpus.jsonl'));
+  const { data, repeat, json, perQuery, lanes: laneFilter, titleWeights, lang, stemmer, dbDir, reportDb } = parseArgs(process.argv.slice(2));
+  const corpusPath = join(data, 'corpus.jsonl');
+  const dbOpts = { dbDir, prefix: basename(resolve(data)) };
   const queries = new Map(readJsonl(join(data, 'queries.jsonl')).map((q) => [String(q._id), q.text]));
   const qrels = readQrels(join(data, 'qrels', 'test.tsv'));
   const qids = [...qrels.keys()].filter((q) => queries.has(q));
@@ -274,20 +324,23 @@ async function run() {
   let lanes;
   let tokOpts; // stopword options for the per-query term count
   let dbBytes = null;
+  let docCount;
   if (lang === 'de') {
     const stem = await import(pathToFileURL(resolve(stemmer)).href);
     if (!(stem.STOPWORDS instanceof Set) || typeof stem.queryTermVariants !== 'function') {
       throw new Error('beir-bench: --stemmer module must export STOPWORDS (Set) and queryTermVariants()');
     }
-    ({ lanes, tokOpts, dbBytes } = lanesForDe(corpus, stem));
+    ({ lanes, tokOpts, dbBytes, docs: docCount } = await lanesForDe(corpusPath, stem, dbOpts));
   } else {
-    lanes = lanesFor(loadCorpus(corpus), corpus.length);
+    const { db, docs } = await loadCorpus(corpusPath, 'porter unicode61', { ...dbOpts, name: `${dbOpts.prefix}-porter-unicode61` });
+    docCount = docs;
+    lanes = lanesFor(db, docs);
   }
 
   // T13 title-weighted lanes on the split-column table docs2; existing lanes
   // keep running on docs unchanged. Only created when the flag is set.
   if (titleWeights) {
-    const db2 = loadCorpusSplit(corpus);
+    const db2 = await loadCorpusSplit(corpusPath, { ...dbOpts, name: `${dbOpts.prefix}-split` });
     const stmt2 = db2.prepare(
       'SELECT rowid AS rid, id, title || char(10) || text AS content FROM docs2 WHERE docs2 MATCH ? ORDER BY bm25(docs2, 0.0, ?, 1.0) LIMIT ?',
     );
@@ -327,10 +380,14 @@ async function run() {
     }
   }
 
-  const out = { dataset: basename(data), docs: corpus.length, queries: qids.length, lanes: {} };
+  const out = { dataset: basename(data), docs: docCount, queries: qids.length, lanes: {} };
   if (lang === 'de') {
     out.lang = 'de';
     out.dbBytes = dbBytes;
+  }
+  if (reportDb) {
+    out.buildMs = Object.fromEntries(builtIndexes.map((x) => [x.name, +x.ms.toFixed(0)]));
+    out.indexBytes = Object.fromEntries(builtIndexes.map((x) => [x.name, dbBytesOf(x.db)]));
   }
   for (const lane of laneNames) {
     const m = evaluate(runs.get(lane), qrels, { k: 10, recallK: K });
@@ -361,6 +418,11 @@ async function run() {
   if (dbBytes) {
     const mb = (b) => (b / 1048576).toFixed(2);
     console.log(`db size MB: unicode61=${mb(dbBytes.unicode61)} trigram=${mb(dbBytes.trigram)}`);
+  }
+  if (reportDb) {
+    for (const x of builtIndexes) {
+      console.log(`index ${x.name}: build ${(x.ms / 1000).toFixed(1)} s, size ${(dbBytesOf(x.db) / 1048576).toFixed(2)} MB`);
+    }
   }
 
   // Per-query detail file for beir-compare (T12): one line per judged query.

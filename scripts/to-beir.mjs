@@ -16,10 +16,15 @@
 //       report truncated_cells = [] and the pages together must cover
 //       num_rows_total rows. Corpus = distinct (title, context) pairs in order
 //       of first appearance, ids c0, c1, ...; qrels = each question's context.
+//   --format msmarco-tsv --in collection.tsv,queries.tsv,qrels.tsv
+//       MS MARCO / mMARCO passage files (T19): collection `pid<TAB>text`,
+//       queries `qid<TAB>text`, qrels in TREC form `qid 0 pid rel`. Streamed,
+//       so an 8.8M-passage collection never sits in memory. Titles are empty.
 //
-// Usage: node scripts/to-beir.mjs --format <germandpr|hf-rows> --in <file[,file…]> --out <dir>
+// Usage: node scripts/to-beir.mjs --format <germandpr|hf-rows|msmarco-tsv> --in <file[,file…]> --out <dir>
 // Prints one summary line: docs=<n> queries=<n> qrels=<n> [notes]
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, createReadStream, openSync, writeSync, closeSync } from 'node:fs';
+import { createInterface } from 'node:readline';
 import { join } from 'node:path';
 
 function parseArgs(argv) {
@@ -31,7 +36,12 @@ function parseArgs(argv) {
     else if (a === '--out') out.outDir = argv[++i];
     else throw new Error(`to-beir: unknown argument: ${a}`);
   }
-  if (!['germandpr', 'hf-rows'].includes(out.format)) throw new Error('to-beir: --format must be germandpr or hf-rows');
+  if (!['germandpr', 'hf-rows', 'msmarco-tsv'].includes(out.format)) {
+    throw new Error('to-beir: --format must be germandpr, hf-rows or msmarco-tsv');
+  }
+  if (out.format === 'msmarco-tsv' && out.inputs.length !== 3) {
+    throw new Error('to-beir: msmarco-tsv needs --in collection.tsv,queries.tsv,qrels.tsv');
+  }
   if (!out.inputs.length) throw new Error('to-beir: --in <file[,file…]> is required');
   if (!out.outDir) throw new Error('to-beir: --out <dir> is required');
   return out;
@@ -108,8 +118,50 @@ function fromHfRows(pages) {
   return { corpus, queries, qrels, notes: [] };
 }
 
-function main() {
+async function* tsvLines(path) {
+  const rl = createInterface({ input: createReadStream(path, { encoding: 'utf8' }), crlfDelay: Infinity });
+  for await (const line of rl) if (line.trim()) yield line;
+}
+
+// id<TAB>text; the text may itself contain tabs, so only the first one splits.
+function splitIdText(line, what) {
+  const i = line.indexOf('\t');
+  if (i <= 0) throw new Error(`to-beir: ${what} line without id<TAB>text: ${line.slice(0, 80)}`);
+  return [line.slice(0, i), line.slice(i + 1)];
+}
+
+async function fromMsmarcoTsv([collection, queriesFile, qrelsFile], outDir) {
+  mkdirSync(join(outDir, 'qrels'), { recursive: true });
+  const fd = openSync(join(outDir, 'corpus.jsonl'), 'w');
+  let docs = 0;
+  let buf = [];
+  for await (const line of tsvLines(collection)) {
+    const [_id, text] = splitIdText(line, 'collection');
+    buf.push(JSON.stringify({ _id, title: '', text }));
+    docs++;
+    if (buf.length >= 10000) { writeSync(fd, buf.join('\n') + '\n'); buf = []; }
+  }
+  if (buf.length) writeSync(fd, buf.join('\n') + '\n');
+  closeSync(fd);
+  const queries = [];
+  for await (const line of tsvLines(queriesFile)) {
+    const [_id, text] = splitIdText(line, 'queries');
+    queries.push(JSON.stringify({ _id, text }));
+  }
+  writeFileSync(join(outDir, 'queries.jsonl'), queries.join('\n') + '\n');
+  const qrels = ['query-id\tcorpus-id\tscore'];
+  for await (const line of tsvLines(qrelsFile)) {
+    const f = line.trim().split(/\s+/);
+    if (f.length !== 4) throw new Error(`to-beir: qrels line is not "qid 0 pid rel": ${line.slice(0, 80)}`);
+    qrels.push(`${f[0]}\t${f[2]}\t${f[3]}`);
+  }
+  writeFileSync(join(outDir, 'qrels', 'test.tsv'), qrels.join('\n') + '\n');
+  console.log(`docs=${docs} queries=${queries.length} qrels=${qrels.length - 1}`);
+}
+
+async function main() {
   const { format, inputs, outDir } = parseArgs(process.argv.slice(2));
+  if (format === 'msmarco-tsv') return fromMsmarcoTsv(inputs, outDir);
   const parsed = inputs.map((f) => JSON.parse(readFileSync(f, 'utf8')));
   const { corpus, queries, qrels, notes } = format === 'germandpr'
     ? fromGermanDpr(parsed.length === 1 ? parsed[0] : parsed.flat())
@@ -123,4 +175,4 @@ function main() {
   console.log(`docs=${corpus.size} queries=${queries.length} qrels=${qrels.length}${notes.length ? ' ' + notes.join(' ') : ''}`);
 }
 
-main();
+await main();
