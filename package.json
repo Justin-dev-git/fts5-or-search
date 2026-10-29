@@ -1,7 +1,7 @@
 {
   "name": "fts5-or-search",
   "version": "0.2.0",
-  "description": "Injection-safe OR match builder for SQLite FTS5 with BM25 ranking, validated on four BEIR datasets against strict AND and several coverage-based alternatives.",
+  "description": "Injection-safe OR match builder for SQLite FTS5 with BM25 ranking, validated on four English BEIR datasets and two German datasets against strict AND, re-ranking, stemming and trigram variants.",
   "type": "module",
   "main": "lib/or-search.mjs",
   "exports": { ".": "./lib/or-search.mjs" },
@@ -12,6 +12,6 @@
   },
   "engines": { "node": ">=22.13" },
   "license": "MIT",
-  "keywords": ["sqlite", "fts5", "full-text-search", "retrieval", "bm25", "beir"],
+  "keywords": ["sqlite", "fts5", "full-text-search", "retrieval", "bm25", "beir", "german", "trigram"],
   "files": ["lib/or-search.mjs", "bench.mjs", "scripts/corpus-from-md.mjs"]
 }

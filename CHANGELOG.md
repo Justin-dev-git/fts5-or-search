@@ -5,6 +5,16 @@ Behavior changes to public functions are marked **Behavior change**.
 
 ## Unreleased
 
+### Added: STOPWORDS_DE and the German recommendation
+- `STOPWORDS_DE` (94 entries) is exported: an exact copy of `STOPWORDS` in
+  german-fts5-stemmer 17e64135, the list all German measurements used
+  (checked member by member and in order during review).
+- README: German quick start (OR on a `trigram remove_diacritics 1` index
+  with `STOPWORDS_DE`) and the German results of T16-T18; English table 3
+  gains the k=10 re-rank lanes of T18 and the TREC-COVID value of `hybrid`.
+- `test/german-recipe.test.mjs` runs the README recipe (sub-word hit, folded
+  umlauts, stopword kept out of the trigram match).
+
 ### Added: German measurement mode (bench only, no library change)
 - `scripts/beir-bench.mjs --lang de --stemmer <path/to/stem-german.mjs>`:
   lanes `and`, `or`, `or-stem`, `or-stem-paradigm` (german-fts5-stemmer
