@@ -17,6 +17,9 @@
 //   --db-dir <dir>  build the FTS5 databases as files in <dir> (must exist;
 //           existing files are never overwritten) instead of in memory. For
 //           corpora larger than the free RAM (T19). Rankings are the same.
+//   --reuse-db  with --db-dir: reuse an index whose build finished (a
+//           <name>.db.done marker with the same tokenizer and corpus size);
+//           build missing ones; refuse a .db without marker (aborted build).
 //   --report-db  also report build time and database size per index
 //           (text line + JSON fields buildMs/dbBytes).
 //   --json  additionally prints one JSON line as the LAST output line:
@@ -43,7 +46,7 @@ const BLEND_LAMBDAS = { blend: [0, 0.1, 0.2, 0.5], blendidf: [0.1, 0.2, 0.5] };
 function parseArgs(argv) {
   const out = {
     data: null, repeat: 3, json: false, perQuery: null, lanes: null, titleWeights: null,
-    lang: 'en', stemmer: null, dbDir: null, reportDb: false,
+    lang: 'en', stemmer: null, dbDir: null, reportDb: false, reuseDb: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -56,6 +59,7 @@ function parseArgs(argv) {
     else if (a === '--stemmer') out.stemmer = argv[++i];
     else if (a === '--db-dir') out.dbDir = argv[++i];
     else if (a === '--report-db') out.reportDb = true;
+    else if (a === '--reuse-db') out.reuseDb = true;
     else if (a === '--title-weights') {
       out.titleWeights = argv[++i].split(',').filter(Boolean).map((s) => {
         const w = Number(s);
@@ -72,6 +76,7 @@ function parseArgs(argv) {
   if (out.dbDir && !(existsSync(out.dbDir) && statSync(out.dbDir).isDirectory())) {
     throw new Error(`beir-bench: --db-dir must be an existing directory: ${out.dbDir}`);
   }
+  if (out.reuseDb && !out.dbDir) throw new Error('beir-bench: --reuse-db needs --db-dir');
   if (!Number.isInteger(out.repeat) || out.repeat < 1) {
     throw new Error(`beir-bench: --repeat must be a positive integer, got ${out.repeat}`);
   }
@@ -133,7 +138,22 @@ const dbBytesOf = (db) => db.prepare('PRAGMA page_count').get().page_count * db.
 // Every built index is recorded here for --report-db: name, ms, db.
 const builtIndexes = [];
 
-async function loadCorpus(corpusPath, tokenizer = 'porter unicode61', { dbDir = null, name = 'index' } = {}) {
+async function loadCorpus(corpusPath, tokenizer = 'porter unicode61', { dbDir = null, name = 'index', reuse = false } = {}) {
+  const file = dbDir ? join(dbDir, `${name}.db`) : null;
+  const corpusBytes = statSync(corpusPath).size;
+  if (reuse) {
+    const marker = `${file}.done`;
+    if (existsSync(marker)) {
+      const m = JSON.parse(readFileSync(marker, 'utf8'));
+      if (m.tokenizer !== tokenizer || m.corpusBytes !== corpusBytes) {
+        throw new Error(`beir-bench: ${file} was built with another tokenizer or corpus; remove it`);
+      }
+      const db = new DatabaseSync(file);
+      builtIndexes.push({ name, ms: m.buildMs, db, reused: true });
+      return { db, docs: m.docs };
+    }
+    if (existsSync(file)) throw new Error(`beir-bench: ${file} has no .done marker (aborted build?); remove it`);
+  }
   const t0 = performance.now();
   const db = openDb(dbDir, name);
   db.exec(`CREATE VIRTUAL TABLE docs USING fts5(id UNINDEXED, content, tokenize='${tokenizer}')`);
@@ -145,7 +165,9 @@ async function loadCorpus(corpusPath, tokenizer = 'porter unicode61', { dbDir = 
     docs++;
   }
   db.exec('COMMIT');
-  builtIndexes.push({ name, ms: performance.now() - t0, db });
+  const ms = performance.now() - t0;
+  if (file) writeFileSync(`${file}.done`, JSON.stringify({ tokenizer, docs, buildMs: Math.round(ms), corpusBytes }) + '\n');
+  builtIndexes.push({ name, ms, db });
   return { db, docs };
 }
 
@@ -314,9 +336,9 @@ async function lanesForDe(corpusPath, stem, dbOpts) {
 }
 
 async function run() {
-  const { data, repeat, json, perQuery, lanes: laneFilter, titleWeights, lang, stemmer, dbDir, reportDb } = parseArgs(process.argv.slice(2));
+  const { data, repeat, json, perQuery, lanes: laneFilter, titleWeights, lang, stemmer, dbDir, reportDb, reuseDb } = parseArgs(process.argv.slice(2));
   const corpusPath = join(data, 'corpus.jsonl');
-  const dbOpts = { dbDir, prefix: basename(resolve(data)) };
+  const dbOpts = { dbDir, prefix: basename(resolve(data)), reuse: reuseDb };
   const queries = new Map(readJsonl(join(data, 'queries.jsonl')).map((q) => [String(q._id), q.text]));
   const qrels = readQrels(join(data, 'qrels', 'test.tsv'));
   const qids = [...qrels.keys()].filter((q) => queries.has(q));
@@ -388,6 +410,7 @@ async function run() {
   if (reportDb) {
     out.buildMs = Object.fromEntries(builtIndexes.map((x) => [x.name, +x.ms.toFixed(0)]));
     out.indexBytes = Object.fromEntries(builtIndexes.map((x) => [x.name, dbBytesOf(x.db)]));
+    out.reusedIndexes = builtIndexes.filter((x) => x.reused).map((x) => x.name);
   }
   for (const lane of laneNames) {
     const m = evaluate(runs.get(lane), qrels, { k: 10, recallK: K });
@@ -421,7 +444,7 @@ async function run() {
   }
   if (reportDb) {
     for (const x of builtIndexes) {
-      console.log(`index ${x.name}: build ${(x.ms / 1000).toFixed(1)} s, size ${(dbBytesOf(x.db) / 1048576).toFixed(2)} MB`);
+      console.log(`index ${x.name}: build ${(x.ms / 1000).toFixed(1)} s${x.reused ? ' (earlier run, reused)' : ''}, size ${(dbBytesOf(x.db) / 1048576).toFixed(2)} MB`);
     }
   }
 

@@ -20,6 +20,12 @@ Behavior changes to public functions are marked **Behavior change**.
   numeric ids), so English and German subsets of one size hold the same
   passages.
 - `test/scale-tools.test.mjs` with `test/fixtures/msmarco-mini`.
+- `--reuse-db`: reuse an index whose build finished (`<name>.db.done` marker
+  with tokenizer and corpus size), refuse a database without marker.
+- `scripts/scale-run.sh`: resumable background runner for T19 (subsets, id
+  hash check en/de, one bench process per lane with a time limit, merges,
+  compares, `results/summary.md`); helpers `scripts/merge-per-query.mjs` and
+  `scripts/scale-summary.mjs`; `test/scale-run.test.mjs`.
 
 ### Added: STOPWORDS_DE and the German recommendation
 - `STOPWORDS_DE` (94 entries) is exported: an exact copy of `STOPWORDS` in
