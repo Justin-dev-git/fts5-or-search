@@ -1,0 +1,5 @@
+{"features": [], "num_rows_total": 3, "num_rows_per_page": 2, "partial": false,
+ "rows": [
+  {"row_idx": 0, "truncated_cells": [], "row": {"id": "x1", "title": "Personalausweis", "context": "Den Personalausweis beantragen Sie im Bürgerbüro.", "question": "Wo beantrage ich einen Ausweis?", "answers": {"answer_start": [33], "text": ["im Bürgerbüro"]}}},
+  {"row_idx": 1, "truncated_cells": [], "row": {"id": "x2", "title": "Personalausweis", "context": "Den Personalausweis beantragen Sie im Bürgerbüro.", "question": "Wer stellt den Personalausweis aus?", "answers": {"answer_start": [33], "text": ["Bürgerbüro"]}}}
+ ]}

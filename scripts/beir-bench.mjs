@@ -6,6 +6,14 @@
 // metrics come from scripts/metrics.mjs.
 //
 // Usage: node scripts/beir-bench.mjs --data <dir> [--repeat 3] [--json]
+//        node scripts/beir-bench.mjs --data <dir> --lang de --stemmer <path/to/stem-german.mjs> [...]
+//   --lang de  German lanes instead of the English ones: and, or, or-stem,
+//           or-stem-paradigm (german-fts5-stemmer variants, ORed), or-trigram
+//           (FTS5 trigram tokenizer), hybrid and hybrid-expanded (coverage
+//           re-rank as in german-fts5-stemmer's bench.mjs, T17). Index
+//           tokenizer 'unicode61', stopwords = the stemmer's STOPWORDS for
+//           every lane. The stemmer module is loaded from --stemmer at run
+//           time; it is not a dependency.
 //   --json  additionally prints one JSON line as the LAST output line:
 //           { dataset, docs, queries, lanes: { <lane>:
 //             { ndcg10, mrr10, recall100, p50ms, p95ms } } }
@@ -13,7 +21,8 @@
 // Latency is per query (retrieval + re-rank); p50/p95 per repeat run, and
 // the WORST value over the repeats is reported (cache-bias guard).
 import { readFileSync, writeFileSync } from 'node:fs';
-import { join, basename } from 'node:path';
+import { join, basename, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { performance } from 'node:perf_hooks';
 import {
@@ -26,7 +35,7 @@ const BLEND_POOL = 500; // candidate pool for the blend lanes (T12)
 const BLEND_LAMBDAS = { blend: [0, 0.1, 0.2, 0.5], blendidf: [0.1, 0.2, 0.5] };
 
 function parseArgs(argv) {
-  const out = { data: null, repeat: 3, json: false, perQuery: null, lanes: null, titleWeights: null };
+  const out = { data: null, repeat: 3, json: false, perQuery: null, lanes: null, titleWeights: null, lang: 'en', stemmer: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--data') out.data = argv[++i];
@@ -34,6 +43,8 @@ function parseArgs(argv) {
     else if (a === '--json') out.json = true;
     else if (a === '--per-query') out.perQuery = argv[++i];
     else if (a === '--lanes') out.lanes = argv[++i].split(',').filter(Boolean);
+    else if (a === '--lang') out.lang = argv[++i];
+    else if (a === '--stemmer') out.stemmer = argv[++i];
     else if (a === '--title-weights') {
       out.titleWeights = argv[++i].split(',').filter(Boolean).map((s) => {
         const w = Number(s);
@@ -44,6 +55,9 @@ function parseArgs(argv) {
     } else throw new Error(`beir-bench: unknown argument: ${a}`);
   }
   if (!out.data) throw new Error('beir-bench: --data <dir> is required');
+  if (!['en', 'de'].includes(out.lang)) throw new Error(`beir-bench: --lang must be en or de, got ${out.lang}`);
+  if (out.lang === 'de' && !out.stemmer) throw new Error('beir-bench: --lang de needs --stemmer <path/to/stem-german.mjs>');
+  if (out.lang === 'de' && out.titleWeights) throw new Error('beir-bench: --title-weights is English-only');
   if (!Number.isInteger(out.repeat) || out.repeat < 1) {
     throw new Error(`beir-bench: --repeat must be a positive integer, got ${out.repeat}`);
   }
@@ -78,9 +92,9 @@ function percentile(sorted, p) {
   return sorted[idx];
 }
 
-function loadCorpus(docs) {
+function loadCorpus(docs, tokenizer = 'porter unicode61') {
   const db = new DatabaseSync(':memory:');
-  db.exec("CREATE VIRTUAL TABLE docs USING fts5(id UNINDEXED, content, tokenize='porter unicode61')");
+  db.exec(`CREATE VIRTUAL TABLE docs USING fts5(id UNINDEXED, content, tokenize='${tokenizer}')`);
   const ins = db.prepare('INSERT INTO docs (id, content) VALUES (?, ?)');
   db.exec('BEGIN');
   for (const d of docs) ins.run(String(d._id), `${d.title ?? ''}\n${d.text ?? ''}`);
@@ -160,18 +174,115 @@ function lanesFor(db, docCount) {
       lanes[`${fam}-${lambda}`] = (q) => blend(q, lambda, fam === 'blendidf');
     }
   }
+
+  // T18: the re-rank lanes at the library's normal top-10 use (k=10, OR pool
+  // k*5 = 50). The k=K lanes above re-rank a 500-row pool, which lets
+  // coverage pull low-BM25 documents into the top 10. These lanes return 10
+  // rows (hybrid-substr-k10: the 50-row pool), so only the @10 metrics are
+  // comparable with the other lanes; Recall@100 is not.
+  const K10 = 10;
+  lanes['hybrid-k10'] = (q) => hybridSearch(search, q, getText, { k: K10 });
+  lanes['hybrid-nofloor-k10'] = (q) => hybridSearch(search, q, getText, { k: K10, andFloor: false });
+  lanes['hybrid-fts-k10'] = (q) => hybridSearch(search, q, getText, { k: K10, termPresent });
+  // the German T17 re-rank (substring coverage, pool 50, no AND floor) on English
+  lanes['hybrid-substr-k10'] = (q) => {
+    const ts = tokenize(q);
+    return ts.length ? substringCoverageRerank(search(buildOrMatch(q), SUBSTR_RERANK_POOL), ts.map((t) => [t])) : [];
+  };
   return lanes;
 }
 
-function run() {
-  const { data, repeat, json, perQuery, lanes: laneFilter, titleWeights } = parseArgs(process.argv.slice(2));
+// German lanes (T16). Every lane uses the stemmer's STOPWORDS so that the
+// lanes differ only in matching: and/or on 'unicode61' (folds umlauts, keeps
+// ß), or-stem* OR all stemmer variants of all query terms, or-trigram ORs the
+// same terms as `or` against a trigram index (substring matching, so
+// compounds such as "Personalausweis" contain "ausweis").
+const quoteTerm = (t) => `"${t.replaceAll('"', '')}"`;
+
+// T17: re-rank exactly as the lanes fts-hybrid / fts-hybrid-expanded in
+// german-fts5-stemmer's bench.mjs: pool = 50 rows (its K*5 with K=10),
+// coverage = number of term groups with ANY variant occurring as a substring
+// of the lower-cased row text (not folded), score = coverage*1000 + 1/(i+1).
+// Recall@100 of these lanes is therefore capped by the 50-row pool.
+const SUBSTR_RERANK_POOL = 50;
+function substringCoverageRerank(rows, groups) {
+  return rows
+    .map((r, i) => {
+      const low = String(r.content ?? '').toLowerCase();
+      const coverage = groups.filter((u) => u.some((v) => low.includes(v))).length;
+      return { r, score: coverage * 1000 + 1 / (i + 1) };
+    })
+    .sort((a, b) => b.score - a.score)
+    .map((x) => x.r);
+}
+
+function lanesForDe(corpus, stem) {
+  const de = { stopwords: stem.STOPWORDS };
+  const prep = (db) => {
+    const stmt = db.prepare('SELECT rowid AS rid, id, content, rank FROM docs WHERE docs MATCH ? ORDER BY rank LIMIT ?');
+    return (match, limit = K) => stmt.all(match, limit);
+  };
+  const dbUni = loadCorpus(corpus, 'unicode61');
+  const dbTri = loadCorpus(corpus, 'trigram remove_diacritics 1');
+  const bytesOf = (db) => db.prepare('PRAGMA page_count').get().page_count * db.prepare('PRAGMA page_size').get().page_size;
+  const search = prep(dbUni);
+  const searchTri = prep(dbTri);
+  const stemMatch = (q, paradigm) => {
+    const vs = [...new Set(stem.queryTermVariants(q, { paradigm }).flat())];
+    return vs.length ? `(${vs.map(quoteTerm).join(' OR ')})` : '""';
+  };
+  return {
+    lanes: {
+      and: (q) => search(sanitizeMatch(q, de)),
+      or: (q) => search(buildOrMatch(q, de)),
+      'or-stem': (q) => search(stemMatch(q, false)),
+      'or-stem-paradigm': (q) => search(stemMatch(q, true)),
+      'or-trigram': (q) => searchTri(buildOrMatch(q, de)),
+      // coverage re-rank without stemmer: groups are the single `or` terms
+      hybrid: (q) => {
+        const ts = tokenize(q, de);
+        return ts.length ? substringCoverageRerank(search(buildOrMatch(q, de), SUBSTR_RERANK_POOL), ts.map((t) => [t])) : [];
+      },
+      // stemmer-expanded OR pool (match string built like the original:
+      // groups ORed, duplicates kept) + variant-coverage re-rank
+      'hybrid-expanded': (q) => {
+        const groups = stem.queryTermVariants(q);
+        if (!groups.length) return [];
+        const orM = groups.map((u) => `(${u.map(quoteTerm).join(' OR ')})`).join(' OR ');
+        return substringCoverageRerank(search(orM, SUBSTR_RERANK_POOL), groups);
+      },
+      // T18: trigram OR pool + the same substring coverage re-rank (substring
+      // coverage matches trigram's substring semantics)
+      'hybrid-trigram': (q) => {
+        const ts = tokenize(q, de);
+        return ts.length ? substringCoverageRerank(searchTri(buildOrMatch(q, de), SUBSTR_RERANK_POOL), ts.map((t) => [t])) : [];
+      },
+    },
+    tokOpts: de,
+    // whole in-memory database incl. stored text; the difference is index size
+    dbBytes: { unicode61: bytesOf(dbUni), trigram: bytesOf(dbTri) },
+  };
+}
+
+async function run() {
+  const { data, repeat, json, perQuery, lanes: laneFilter, titleWeights, lang, stemmer } = parseArgs(process.argv.slice(2));
   const corpus = readJsonl(join(data, 'corpus.jsonl'));
   const queries = new Map(readJsonl(join(data, 'queries.jsonl')).map((q) => [String(q._id), q.text]));
   const qrels = readQrels(join(data, 'qrels', 'test.tsv'));
   const qids = [...qrels.keys()].filter((q) => queries.has(q));
 
-  const db = loadCorpus(corpus);
-  const lanes = lanesFor(db, corpus.length);
+  let lanes;
+  let tokOpts; // stopword options for the per-query term count
+  let dbBytes = null;
+  if (lang === 'de') {
+    const stem = await import(pathToFileURL(resolve(stemmer)).href);
+    if (!(stem.STOPWORDS instanceof Set) || typeof stem.queryTermVariants !== 'function') {
+      throw new Error('beir-bench: --stemmer module must export STOPWORDS (Set) and queryTermVariants()');
+    }
+    ({ lanes, tokOpts, dbBytes } = lanesForDe(corpus, stem));
+  } else {
+    lanes = lanesFor(loadCorpus(corpus), corpus.length);
+  }
 
   // T13 title-weighted lanes on the split-column table docs2; existing lanes
   // keep running on docs unchanged. Only created when the flag is set.
@@ -217,6 +328,10 @@ function run() {
   }
 
   const out = { dataset: basename(data), docs: corpus.length, queries: qids.length, lanes: {} };
+  if (lang === 'de') {
+    out.lang = 'de';
+    out.dbBytes = dbBytes;
+  }
   for (const lane of laneNames) {
     const m = evaluate(runs.get(lane), qrels, { k: 10, recallK: K });
     out.lanes[lane] = {
@@ -243,13 +358,17 @@ function run() {
   console.log(`dataset=${out.dataset} docs=${out.docs} queries=${out.queries} repeat=${repeat}`);
   console.log(header.map((h, i) => h.padEnd(widths[i])).join('  '));
   for (const r of rows) console.log(r.map((c, i) => c.padEnd(widths[i])).join('  '));
+  if (dbBytes) {
+    const mb = (b) => (b / 1048576).toFixed(2);
+    console.log(`db size MB: unicode61=${mb(dbBytes.unicode61)} trigram=${mb(dbBytes.trigram)}`);
+  }
 
   // Per-query detail file for beir-compare (T12): one line per judged query.
   if (perQuery) {
     const lines = [];
     for (const qid of qids) {
       const qrel = qrels.get(qid);
-      const terms = new Set(tokenize(queries.get(qid))).size;
+      const terms = new Set(tokenize(queries.get(qid), tokOpts)).size;
       const perLane = {};
       for (const lane of laneNames) {
         const ranked = runs.get(lane).get(qid) ?? [];
@@ -262,4 +381,4 @@ function run() {
   if (json) console.log(JSON.stringify(out));
 }
 
-run();
+await run();

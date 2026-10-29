@@ -1,0 +1,4 @@
+{"features": [], "num_rows_total": 3, "num_rows_per_page": 2, "partial": false,
+ "rows": [
+  {"row_idx": 2, "truncated_cells": [], "row": {"id": "x3", "title": "Müllabfuhr", "context": "Die Müllabfuhr kommt montags.", "question": "Wann kommt die Müllabfuhr?", "answers": {"answer_start": [20], "text": ["montags"]}}}
+ ]}

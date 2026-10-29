@@ -1,7 +1,7 @@
 # Zieldokument – fts5-or-search (entstanden als fts5-hybrid-search)
 
-**Status:** Englisch ausgewertet (28.10.2026, siehe „Ergebnis Englisch“).
-Deutsch ist offen. Zweck, Kriterien und Schwellen legt der Owner fest.
+**Status:** Englisch und Deutsch ausgewertet (siehe „Ergebnis Englisch“
+und „Ergebnis Deutsch“). Zweck, Kriterien und Schwellen legt der Owner fest.
 
 ## Zweck
 Natürlichsprachige Mehrwort-Anfragen an einen SQLite-FTS5-Korpus sollen die
@@ -69,3 +69,80 @@ und NFCorpus, getestet auf FiQA und TREC-COVID.
   überholt.
 - **Empfehlung:** OR mit FTS5-BM25, also `buildOrMatch(q)` mit
   `ORDER BY rank`.
+- **Vorbehalt geklärt (T18):** Die `hybrid`-Lanes aus T11 bis T14
+  sortierten einen Pool von 500 Treffern um, weil sie mit k=100 liefen. T18
+  hat das Re-Rank deshalb in der normalen Top-10-Konfiguration nachgemessen
+  (k=10, Pool 50). Auch dort liegt es auf allen vier Datensätzen unter `or`.
+  Beispiele für `hybrid-k10`: SciFact −0.0812, FiQA −0.0644, TREC-COVID
+  −0.0890. E2 ist damit auch für die übliche Konfiguration nicht erfüllt, und
+  die Empfehlung bleibt.
+
+## Deutsch (Entwurf, 28.10.2026)
+Die Leitlinie gilt unverändert. Die Frage lautet: Schlägt eine Erweiterung
+das einfache OR auch auf Deutsch?
+
+- **Referenz:** `or` auf einem `unicode61`-Index. Er faltet Umlaute
+  (ä→a), ß bleibt erhalten. Alle Lanes nutzen dieselbe Stoppwortliste, die
+  `STOPWORDS` aus german-fts5-stemmer.
+- **Erweiterungen:**
+  - `or-stem` und `or-stem-paradigm`: alle Varianten aus german-fts5-stemmer,
+    mit OR verknüpft. Die beiden zählen als eine Familie.
+  - `or-trigram`: der FTS5-Tokenizer `trigram`, also Teilwort-Treffer, etwa
+    „Ausweis“ in „Personalausweis“.
+  - Ergänzt mit T17: `hybrid-expanded`, das ist Stemmer-OR plus
+    Coverage-Re-Rank, genau wie `fts-hybrid-expanded` in german-fts5-stemmer
+    und die beste Lane auf dem privaten Korpus. Dazu `hybrid`, dasselbe
+    Re-Rank ohne Stemmer, damit sich die Wirkung zuordnen lässt. Beide
+    wurden auf keinem der öffentlichen Datensätze abgestimmt, für sie
+    zählen also beide.
+- **Daten:**
+  - **GermanDPR** (Test-Split, CC BY 4.0) ist der Auswahldatensatz. Nur hier
+    wird zwischen `or-stem` und `or-stem-paradigm` gewählt.
+  - **GermanGovService** (LHM-Dienstleistungen-QA, Test-Split, MIT) ist der
+    Testdatensatz. Dort wird nichts nachjustiert.
+  - `or-trigram` hat nichts abzustimmen. Für ihn zählen also beide
+    Datensätze als nicht abgestimmt.
+- **E1-DE:** `or` nDCG@10 ≥ `and` + 0.10 auf beiden Datensätzen.
+- **E5** gilt unverändert, und zwar auf jedem Datensatz, der für die
+  jeweilige Lane nicht abgestimmt wurde. Zusätzlich wird die
+  Datenbankgröße berichtet, denn ein Trigram-Index ist größer.
+  `or-stem` bräuchte german-fts5-stemmer als zusätzliches Paket (mit
+  Vokabelliste). Ob das den Nutzen wert ist, entscheidet der Owner.
+- **Plausibilität:** `or` wird grob mit dem BM25-Wert aus NanoMTEB-German
+  verglichen: GermanDPR 0.4647, GovService 0.6132. Das sind Teilmengen mit
+  200 Anfragen, und die Implementierung ist unbekannt. Liegt die Abweichung
+  über 0.15, wird erst der Aufbau geprüft.
+- **Bekannte Grenzen:**
+  - Wie die GermanDPR-Negativbeispiele ausgewählt wurden, ist hier nicht
+    belegt.
+  - GovService ist klein (105 Dokumente).
+  - Erfüllt eine Lane E5 nur knapp (unter +0.02) oder widersprechen sich die
+    Datensätze, kommt GerDaLIR (Recht, MIT) als weiterer Testdatensatz dazu.
+
+## Ergebnis Deutsch (29.10.2026)
+Alle Zahlen stammen aus `docs/VALIDATION.md`, Abschnitte T16 bis T18.
+
+- **E1-DE erfüllt.** `or` erreicht 0.4797 gegenüber 0.0263 für `and`
+  (GermanDPR) und 0.6937 gegenüber 0.0753 (GovService).
+- **`or-trigram` erfüllt E5 auf beiden Datensätzen.**
+  - nDCG@10: +0.0541 und +0.0691
+  - P@10: +0.0040 und +0.0039
+  - p95: das 2.38- und 1.85-fache von `or`
+  - Library-Code: keiner. Der Index ist aber 2.59- bzw. 2.50-mal so groß.
+- **`or-stem` erfüllt E5 nicht.** Auf GovService bringt er +0.0031. Auch im
+  Re-Rank bringt der Stemmer nichts Eindeutiges: `hybrid-expanded` gegen
+  `hybrid` ergibt +0.0067 auf GermanDPR und −0.0094 auf GovService.
+- **`hybrid` erfüllt E5 auf beiden Datensätzen** (+0.0363 und +0.0280), das
+  ist Substring-Coverage-Re-Rank auf `unicode61` mit 50er-Pool. Er bleibt
+  aber unter `or-trigram`. Trigram mit Re-Rank (`hybrid-trigram`) liegt
+  ebenfalls unter `or-trigram`: −0.0081 und −0.0139.
+- **Empfehlung:**
+  - Deutsch: OR auf einem Trigram-Index,
+    `tokenize='trigram remove_diacritics 1'`, mit `STOPWORDS_DE`.
+  - Ist der Index fest (`unicode61`): OR mit `STOPWORDS_DE`. Optional kommt
+    das Substring-Re-Rank dazu.
+- **Grenzen:**
+  - Die Datensätze sind klein (2 876 und 105 Dokumente).
+  - Latenz und Indexgröße bei großen deutschen Korpora sind nicht gemessen.
+  - Die Messung auf dem privaten Korpus des Owners steht aus. Dessen Index
+    nutzt `porter unicode61`.

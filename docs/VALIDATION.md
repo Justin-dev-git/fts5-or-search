@@ -548,3 +548,543 @@ document. Their latency is therefore an upper bound.
   ≥ 0.02 nDCG@10 → FTS-exact coverage becomes the recommendation): SciFact
   0.6100 − 0.5907 = **+0.0193** (below 0.02), NFCorpus 0.3056 − 0.2988 =
   **+0.0068** (below 0.02). Criterion not triggered on either dataset.
+
+## T16 – German
+
+Question from `docs/ZIEL.md` ("Deutsch"): does any extension beat plain
+quoted OR with FTS5 BM25 for German? Two extensions were measured:
+`or-stem`/`or-stem-paradigm` (all variants from `german-fts5-stemmer`,
+OR-joined; one family) and `or-trigram` (the built-in FTS5 `trigram`
+tokenizer, sub-word hits such as "Ausweis" inside "Personalausweis").
+Selection was allowed on GermanDPR only; GovService was a holdout with
+nothing adjusted. The reference lane `or` runs on a `unicode61` index
+(folds umlauts, keeps ß); all lanes share the `STOPWORDS` list from
+german-fts5-stemmer.
+
+Stemmer module commit used for every `or-stem*` lane:
+`git -C <german-fts5-stemmer-clone> rev-parse HEAD` →
+`17e64135d75c6948baa113479e80548cc93ba74c` (branch
+`review-fixes-2026-10-28`).
+
+Command form (3a on GermanDPR showed all lanes; 3b on GovService was
+restricted to the selected stem lane):
+
+```
+node "$REPO/scripts/beir-bench.mjs" --data /tmp/beir-de/germandpr --lang de --stemmer "$STEMMER" --repeat 3 --per-query /tmp/beir-de/germandpr.t16.jsonl --json
+node "$REPO/scripts/beir-bench.mjs" --data /tmp/beir-de/govservice --lang de --stemmer "$STEMMER" --repeat 3 --lanes and,or,or-stem,or-trigram --per-query /tmp/beir-de/govservice.t16.jsonl --json
+```
+
+### GermanDPR (selection dataset)
+
+- Source: BEIR export `PM-AI/germandpr-beir`, variant "original"
+  (unmodified titles/texts), test split. The original source
+  `germanquad.s3.amazonaws.com/GermanDPR.zip` is offline (the S3 bucket no
+  longer exists, found 2026-10-28), so the PM-AI export was used; PM-AI
+  states no license of its own. GermanDPR itself is CC BY 4.0.
+- Checksum of the downloaded archive:
+
+```
+ad8bcb01e317f1a4ffef5f3a41f170dd9379c1f3e6e28ec114c695db1f2b1f5d  original.tar.gz
+```
+
+- Size/format check (step 1): `docs=2876 queries=1025 qrels=1025
+  header="q_id\tc_id\trel"` — matches the reference values from the task
+  (2876 docs / 1025 queries / 1025 qrels, per `PM-AI/germandpr-beir`,
+  "original").
+
+Results (`--repeat 3`, worst-of-N timing):
+
+```
+lane              ndcg@10  mrr@10  recall@100  p@10    p50ms  p95ms
+and               0.0263   0.0235  0.0351      0.0035  0.05   0.11
+or                0.4797   0.3759  0.9454      0.0816  1.04   2.36
+or-stem           0.4874   0.3881  0.9610      0.0808  1.53   3.09
+or-stem-paradigm  0.4703   0.3793  0.9629      0.0765  2.16   4.61
+or-trigram        0.5338   0.4332  0.9600      0.0856  3.07   5.61
+db size MB: unicode61=7.69 trigram=19.93
+```
+
+Stem-lane selection (GermanDPR only): `or-stem` nDCG@10 0.4874 vs
+`or-stem-paradigm` 0.4703 → **`or-stem` selected** (higher nDCG@10; the
+tie rule "smaller/`or-stem`" was not needed).
+
+Plausibility against NanoMTEB-German BM25 (0.4647; subset of 200 queries,
+unknown implementation): measured `or` 0.4797, difference **+0.0150**
+(below the 0.15 review trigger).
+
+Per-query compares (`node "$REPO/scripts/beir-compare.mjs"
+/tmp/beir-de/germandpr.t16.jsonl --a <lane> --b <base>`):
+
+```
+or-stem vs or: W=172 T=621 L=232
+terms 1-3  n=125  W=15 T=81 L=29  or-stem: ndcg@10=0.4352 p@10=0.0784  or: ndcg@10=0.4366 p@10=0.0792
+terms 4-6  n=595  W=108 T=357 L=130  or-stem: ndcg@10=0.4714 p@10=0.0795  or: ndcg@10=0.4565 p@10=0.0795
+terms 7+  n=305  W=49 T=183 L=73  or-stem: ndcg@10=0.5401 p@10=0.0843  or: ndcg@10=0.5425 p@10=0.0866
+or-trigram vs or: W=331 T=510 L=184
+terms 1-3  n=125  W=34 T=63 L=28  or-trigram: ndcg@10=0.4671 p@10=0.0824  or: ndcg@10=0.4366 p@10=0.0792
+terms 4-6  n=595  W=197 T=290 L=108  or-trigram: ndcg@10=0.5165 p@10=0.0839  or: ndcg@10=0.4565 p@10=0.0795
+terms 7+  n=305  W=100 T=157 L=48  or-trigram: ndcg@10=0.5947 p@10=0.0902  or: ndcg@10=0.5425 p@10=0.0866
+or vs and: W=800 T=219 L=6
+terms 1-3  n=125  W=77 T=47 L=1  or: ndcg@10=0.4366 p@10=0.0792  and: ndcg@10=0.1165 p@10=0.0176
+terms 4-6  n=595  W=461 T=130 L=4  or: ndcg@10=0.4565 p@10=0.0795  and: ndcg@10=0.0175 p@10=0.0020
+terms 7+  n=305  W=262 T=42 L=1  or: ndcg@10=0.5425 p@10=0.0866  and: ndcg@10=0.0066 p@10=0.0007
+```
+
+### GermanGovService (holdout dataset)
+
+- Source: Hugging Face `it-at-m/LHM-Dienstleistungen-QA`, test split,
+  license MIT. Revision from step 2: `ed40131b56ce86ce3666f2942953595dd9d29608`.
+- Rows fetched via the datasets-server rows API (`config=default`,
+  `split=test`, offsets 0/100/200/300) and converted with
+  `scripts/to-beir.mjs --format hf-rows`, which printed:
+
+```
+docs=105 queries=357 qrels=357
+```
+
+  Reference values: dataset README says the test split has 357 rows (357
+  queries) — matches. MTEB lists 105 documents and 356 queries; the
+  query-count difference (357 measured vs 356) is reported, not adjusted.
+- Checksums of the converted files:
+
+```
+d2e54e7b02625b2a8463839a079cb5cc96048effe94991c898bb3340d2bf3af9  /tmp/beir-de/govservice/corpus.jsonl
+78aebfc65c4d3ee1fce5902cc78d2b7c125f448f8b00a2a2acfaeb9b6b628bc0  /tmp/beir-de/govservice/queries.jsonl
+0ed41baf5da834612e3350f8fd1990c47652ce79ea635e92a0451baf4bc48c8e  /tmp/beir-de/govservice/qrels/test.tsv
+```
+
+Results (`--repeat 3`, lanes fixed by the task; nothing adjusted here):
+
+```
+lane        ndcg@10  mrr@10  recall@100  p@10    p50ms  p95ms
+and         0.0753   0.0742  0.0784      0.0078  0.01   0.03
+or          0.6937   0.6378  0.9160      0.0866  0.15   0.47
+or-stem     0.6968   0.6380  0.9272      0.0877  0.40   1.11
+or-trigram  0.7628   0.7164  0.9692      0.0905  0.56   0.87
+db size MB: unicode61=0.26 trigram=0.64
+```
+
+Plausibility against NanoMTEB-German BM25 (0.6132): measured `or` 0.6937,
+difference **+0.0805** (below the 0.15 review trigger).
+
+Per-query compares (`node "$REPO/scripts/beir-compare.mjs"
+/tmp/beir-de/govservice.t16.jsonl --a <lane> --b <base>`):
+
+```
+or-stem vs or: W=35 T=275 L=47
+terms 1-3  n=66  W=0 T=62 L=4  or-stem: ndcg@10=0.6181 p@10=0.0773  or: ndcg@10=0.6312 p@10=0.0773
+terms 4-6  n=180  W=20 T=134 L=26  or-stem: ndcg@10=0.6909 p@10=0.0889  or: ndcg@10=0.6797 p@10=0.0867
+terms 7+  n=111  W=15 T=79 L=17  or-stem: ndcg@10=0.7530 p@10=0.0919  or: ndcg@10=0.7537 p@10=0.0919
+or-trigram vs or: W=93 T=232 L=32
+terms 1-3  n=66  W=12 T=53 L=1  or-trigram: ndcg@10=0.6880 p@10=0.0788  or: ndcg@10=0.6312 p@10=0.0773
+terms 4-6  n=180  W=48 T=112 L=20  or-trigram: ndcg@10=0.7464 p@10=0.0894  or: ndcg@10=0.6797 p@10=0.0867
+terms 7+  n=111  W=33 T=67 L=11  or-trigram: ndcg@10=0.8337 p@10=0.0991  or: ndcg@10=0.7537 p@10=0.0919
+or vs and: W=281 T=76 L=0
+terms 1-3  n=66  W=31 T=35 L=0  or: ndcg@10=0.6312 p@10=0.0773  and: ndcg@10=0.2863 p@10=0.0303
+terms 4-6  n=180  W=149 T=31 L=0  or: ndcg@10=0.6797 p@10=0.0867  and: ndcg@10=0.0389 p@10=0.0039
+terms 7+  n=111  W=101 T=10 L=0  or: ndcg@10=0.7537 p@10=0.0919  and: ndcg@10=0.0090 p@10=0.0009
+```
+
+### Facts (no recommendation)
+
+E1-DE (`or` nDCG@10 ≥ `and` + 0.10 on both datasets):
+- GermanDPR: 0.4797 ≥ 0.0263 + 0.10 (gap 0.4534) → **met**.
+- GovService: 0.6937 ≥ 0.0753 + 0.10 (gap 0.6184) → **met**.
+
+E5 (from `docs/ZIEL.md`): ≥ +0.01 nDCG@10 on every untuned dataset, P@10
+not worse, p95 at most 3× `or`, about 50 library lines or fewer. `or-stem`
+was tuned on GermanDPR, so only GovService counts for it; `or-trigram`
+tuned nothing, so both datasets count.
+
+| lane | dataset | ΔnDCG@10 vs `or` | ΔP@10 vs `or` | p95 ratio (lane/or) |
+|------|---------|-----------------:|--------------:|--------------------:|
+| `or-trigram` | GermanDPR | +0.0541 | +0.0040 | 5.61/2.36 = 2.38 |
+| `or-trigram` | GovService | +0.0691 | +0.0039 | 0.87/0.47 = 1.85 |
+| `or-stem` (selected) | GovService | +0.0031 | +0.0011 | 1.11/0.47 = 2.36 |
+
+- `or-trigram`: all three measurable E5 conditions (nDCG, P@10, p95) hold
+  on both untuned datasets; the line-count condition concerns library code
+  and is left to the owner.
+- `or-stem` on GovService: ΔnDCG@10 +0.0031 is below the +0.01 threshold —
+  E5 not met on GovService.
+- Database size, trigram vs unicode61 (`dbBytes` from the bench JSON):
+  GermanDPR 20897792/8060928 = **2.59×**, GovService 675840/270336 =
+  **2.50×** (reported per ZIEL.md because a trigram index is larger).
+
+## T17 – German, coverage re-rank lanes
+
+T16 omitted the lane that was strongest on the private corpus in earlier
+work: `fts-hybrid-expanded` from german-fts5-stemmer — a stemmer-expanded OR
+pool followed by coverage re-ranking. It is rebuilt exactly as `hybrid-expanded`,
+together with `hybrid` (same re-rank without stemmer), and measured here on
+the same data as T16 (checksums verified identical to the `## T16 – German`
+section before measuring: GermanDPR `original.tar.gz`
+`ad8bcb01e317f1a4ffef5f3a41f170dd9379c1f3e6e28ec114c695db1f2b1f5d`,
+govservice `corpus.jsonl`
+`d2e54e7b02625b2a8463839a079cb5cc96048effe94991c898bb3340d2bf3af9`,
+`queries.jsonl`
+`78aebfc65c4d3ee1fce5902cc78d2b7c125f448f8b00a2a2acfaeb9b6b628bc0`,
+`qrels/test.tsv`
+`0ed41baf5da834612e3350f8fd1990c47652ce79ea635e92a0451baf4bc48c8e`).
+
+Method: a 50-document pool per lane, then per-word-group substring coverage
+on the lowercased text, exactly as in german-fts5-stemmer's `bench.mjs`;
+`hybrid-expanded` builds its pool from stemmer-expanded OR terms, `hybrid`
+from plain OR. Recall@100 is therefore bounded by the 50-document pool.
+Stemmer module: `german-fts5-stemmer` at
+`17e64135d75c6948baa113479e80548cc93ba74c` (branch `review-fixes-2026-10-28`).
+
+Commands (per dataset `<ds>` in `germandpr`, `govservice`):
+
+```
+node "$REPO/scripts/beir-bench.mjs" --data /tmp/beir-de/<ds> --lang de --stemmer "$STEMMER" --repeat 3 --lanes or,or-stem,or-trigram,hybrid,hybrid-expanded --per-query /tmp/beir-de/<ds>.t17.jsonl --json
+```
+
+Step 1 control: `or`, `or-stem` and `or-trigram` reproduced the T16 tables
+**exactly** at nDCG@10, MRR@10, Recall@100 and P@10 on both datasets
+(deterministic rankings; e.g. GermanDPR or 0.4797/0.3759/0.9454/0.0816 and
+GovService or-trigram 0.7628/0.7164/0.9692/0.0905 are bit-for-bit the T16
+values). Only the worst-of-N latency columns differ within run noise.
+
+### GermanDPR
+
+```
+lane             ndcg@10  mrr@10  recall@100  p@10    p50ms  p95ms
+or               0.4797   0.3759  0.9454      0.0816  1.01   2.30
+or-stem          0.4874   0.3881  0.9610      0.0808  1.55   2.99
+or-trigram       0.5338   0.4332  0.9600      0.0856  2.98   5.41
+hybrid           0.5160   0.4177  0.9298      0.0832  0.97   2.28
+hybrid-expanded  0.5227   0.4319  0.9502      0.0813  1.49   2.96
+db size MB: unicode61=7.69 trigram=19.93
+```
+
+Per-query compares (`node "$REPO/scripts/beir-compare.mjs"
+/tmp/beir-de/germandpr.t17.jsonl --a <a> --b <b>`):
+
+```
+hybrid-expanded vs or: W=361 T=414 L=250
+terms 1-3  n=125  W=31 T=60 L=34  hybrid-expanded: ndcg@10=0.4464 p@10=0.0792  or: ndcg@10=0.4366 p@10=0.0792
+terms 4-6  n=595  W=220 T=228 L=147  hybrid-expanded: ndcg@10=0.5049 p@10=0.0798  or: ndcg@10=0.4565 p@10=0.0795
+terms 7+  n=305  W=110 T=126 L=69  hybrid-expanded: ndcg@10=0.5887 p@10=0.0849  or: ndcg@10=0.5425 p@10=0.0866
+hybrid vs or: W=268 T=584 L=173
+terms 1-3  n=125  W=18 T=90 L=17  hybrid: ndcg@10=0.4355 p@10=0.0784  or: ndcg@10=0.4366 p@10=0.0792
+terms 4-6  n=595  W=159 T=336 L=100  hybrid: ndcg@10=0.4963 p@10=0.0818  or: ndcg@10=0.4565 p@10=0.0795
+terms 7+  n=305  W=91 T=158 L=56  hybrid: ndcg@10=0.5875 p@10=0.0879  or: ndcg@10=0.5425 p@10=0.0866
+hybrid-expanded vs hybrid: W=232 T=539 L=254
+terms 1-3  n=125  W=22 T=74 L=29  hybrid-expanded: ndcg@10=0.4464 p@10=0.0792  hybrid: ndcg@10=0.4355 p@10=0.0784
+terms 4-6  n=595  W=140 T=299 L=156  hybrid-expanded: ndcg@10=0.5049 p@10=0.0798  hybrid: ndcg@10=0.4963 p@10=0.0818
+terms 7+  n=305  W=70 T=166 L=69  hybrid-expanded: ndcg@10=0.5887 p@10=0.0849  hybrid: ndcg@10=0.5875 p@10=0.0879
+hybrid-expanded vs or-trigram: W=319 T=373 L=333
+terms 1-3  n=125  W=38 T=44 L=43  hybrid-expanded: ndcg@10=0.4464 p@10=0.0792  or-trigram: ndcg@10=0.4671 p@10=0.0824
+terms 4-6  n=595  W=188 T=211 L=196  hybrid-expanded: ndcg@10=0.5049 p@10=0.0798  or-trigram: ndcg@10=0.5165 p@10=0.0839
+terms 7+  n=305  W=93 T=118 L=94  hybrid-expanded: ndcg@10=0.5887 p@10=0.0849  or-trigram: ndcg@10=0.5947 p@10=0.0902
+```
+
+### GermanGovService
+
+```
+lane             ndcg@10  mrr@10  recall@100  p@10    p50ms  p95ms
+or               0.6937   0.6378  0.9160      0.0866  0.16   0.55
+or-stem          0.6968   0.6380  0.9272      0.0877  0.47   1.28
+or-trigram       0.7628   0.7164  0.9692      0.0905  0.61   0.91
+hybrid           0.7217   0.6723  0.9104      0.0874  0.29   0.71
+hybrid-expanded  0.7123   0.6586  0.9244      0.0880  0.60   1.48
+db size MB: unicode61=0.26 trigram=0.64
+```
+
+Per-query compares (`node "$REPO/scripts/beir-compare.mjs"
+/tmp/beir-de/govservice.t17.jsonl --a <a> --b <b>`):
+
+```
+hybrid-expanded vs or: W=78 T=223 L=56
+terms 1-3  n=66  W=10 T=51 L=5  hybrid-expanded: ndcg@10=0.6526 p@10=0.0773  or: ndcg@10=0.6312 p@10=0.0773
+terms 4-6  n=180  W=46 T=103 L=31  hybrid-expanded: ndcg@10=0.7123 p@10=0.0906  or: ndcg@10=0.6797 p@10=0.0867
+terms 7+  n=111  W=22 T=69 L=20  hybrid-expanded: ndcg@10=0.7476 p@10=0.0901  or: ndcg@10=0.7537 p@10=0.0919
+hybrid vs or: W=58 T=276 L=23
+terms 1-3  n=66  W=3 T=63 L=0  hybrid: ndcg@10=0.6392 p@10=0.0773  or: ndcg@10=0.6312 p@10=0.0773
+terms 4-6  n=180  W=32 T=133 L=15  hybrid: ndcg@10=0.7144 p@10=0.0883  or: ndcg@10=0.6797 p@10=0.0867
+terms 7+  n=111  W=23 T=80 L=8  hybrid: ndcg@10=0.7826 p@10=0.0919  or: ndcg@10=0.7537 p@10=0.0919
+hybrid-expanded vs hybrid: W=42 T=258 L=57
+terms 1-3  n=66  W=8 T=53 L=5  hybrid-expanded: ndcg@10=0.6526 p@10=0.0773  hybrid: ndcg@10=0.6392 p@10=0.0773
+terms 4-6  n=180  W=25 T=127 L=28  hybrid-expanded: ndcg@10=0.7123 p@10=0.0906  hybrid: ndcg@10=0.7144 p@10=0.0883
+terms 7+  n=111  W=9 T=78 L=24  hybrid-expanded: ndcg@10=0.7476 p@10=0.0901  hybrid: ndcg@10=0.7826 p@10=0.0919
+hybrid-expanded vs or-trigram: W=50 T=217 L=90
+terms 1-3  n=66  W=4 T=51 L=11  hybrid-expanded: ndcg@10=0.6526 p@10=0.0773  or-trigram: ndcg@10=0.6880 p@10=0.0788
+terms 4-6  n=180  W=34 T=101 L=45  hybrid-expanded: ndcg@10=0.7123 p@10=0.0906  or-trigram: ndcg@10=0.7464 p@10=0.0894
+terms 7+  n=111  W=12 T=65 L=34  hybrid-expanded: ndcg@10=0.7476 p@10=0.0901  or-trigram: ndcg@10=0.8337 p@10=0.0991
+```
+
+### Facts (no recommendation)
+
+Neither lane was tuned on any dataset, so E5 (≥ +0.01 nDCG@10 on every
+untuned dataset, P@10 not worse, p95 at most 3× `or`, ≈50 library lines)
+must hold on **both** datasets. Deltas against `or`, same runs:
+
+| lane | dataset | ΔnDCG@10 | ΔP@10 | p95 ratio (lane/or) |
+|------|---------|---------:|------:|--------------------:|
+| `hybrid-expanded` | GermanDPR | +0.0430 | −0.0003 | 2.96/2.30 = 1.29 |
+| `hybrid-expanded` | GovService | +0.0186 | +0.0014 | 1.48/0.55 = 2.69 |
+| `hybrid` | GermanDPR | +0.0363 | +0.0016 | 2.28/2.30 = 0.99 |
+| `hybrid` | GovService | +0.0280 | +0.0008 | 0.71/0.55 = 1.29 |
+
+- `hybrid`: all three measurable E5 conditions hold on both datasets
+  (nDCG ≥ +0.01 everywhere, P@10 never worse, p95 ≤ 3×); the line-count
+  condition concerns library code and is left to the owner.
+- `hybrid-expanded`: nDCG and p95 hold on both datasets; on GermanDPR P@10
+  is 0.0003 below `or` (0.0813 vs 0.0816).
+- ΔnDCG@10 of `hybrid-expanded` against `or-trigram`: GermanDPR
+  0.5227 − 0.5338 = **−0.0111**; GovService 0.7123 − 0.7628 = **−0.0505**.
+- Within the re-rank family, the stemmer effect (`hybrid-expanded` vs
+  `hybrid`) is +0.0067 on GermanDPR (0.5227 vs 0.5160) and −0.0094 on
+  GovService (0.7123 vs 0.7217).
+
+## T18 – Re-rank at k=10 (pool 50)
+
+The `hybrid` lanes of T11–T14 called `hybridSearch` with k=100, i.e. they
+re-ranked an OR pool of **500** hits. A normal top-10 search only re-ranks
+**50**. T17 showed that in German the 50-pool re-rank beats plain OR, so T18
+measures two things: (A) the English re-rank at k=10 (pool 50), and (B)
+whether trigram + re-rank (`hybrid-trigram`) beats `or-trigram` in German.
+The new `*-k10` lanes model the normal top-10 deployment: they return only
+10 hits (`hybrid-substr-k10` returns 50), so their Recall@100 is not
+comparable to the pool-500 lanes.
+
+Step 1 controls passed: `or` and `hybrid` reproduced the previous tables
+exactly at nDCG@10 and P@10 (SciFact `or` 0.6878/0.0910 and `hybrid`
+0.5907/0.0780; NFCorpus 0.3209/0.2337 and 0.2988/0.2149; FiQA 0.2535/0.0690
+and 0.1621/0.0463; TREC-COVID `or` 0.6020/0.6240). TREC-COVID `hybrid` had
+no prior value and is measured here for the first time (0.4471/0.4980). In
+German, `or`, `or-trigram` and `hybrid` reproduced T16/T17 exactly on both
+datasets (GermanDPR 0.4797/0.5338/0.5160; GovService 0.6937/0.7628/0.7217
+nDCG@10, plus identical MRR@10, Recall@100 and P@10). Checksums of all
+inputs were verified against this file before measuring (all four English
+zips and the German data). No STOPP was triggered.
+
+Commands — English, per `<ds>` in scifact, nfcorpus, fiqa, trec-covid:
+
+```
+node "$REPO/scripts/beir-bench.mjs" --data /tmp/beir/<ds> --repeat 3 --lanes or,hybrid,hybrid-k10,hybrid-nofloor-k10,hybrid-fts-k10,hybrid-substr-k10 --per-query /tmp/beir/<ds>.t18.jsonl --json
+```
+
+German, per `<ds>` in germandpr, govservice (STEMMER =
+german-fts5-stemmer `17e64135d75c6948baa113479e80548cc93ba74c`):
+
+```
+node "$REPO/scripts/beir-bench.mjs" --data /tmp/beir-de/<ds> --lang de --stemmer "$STEMMER" --repeat 3 --lanes or,or-trigram,hybrid,hybrid-trigram --per-query /tmp/beir-de/<ds>.t18.jsonl --json
+```
+
+Compares, per English dataset:
+
+```
+node "$REPO/scripts/beir-compare.mjs" /tmp/beir/<ds>.t18.jsonl --a <lane> --b or
+```
+
+for all four `*-k10` lanes; per German dataset the same with
+`/tmp/beir-de/<ds>.t18.jsonl`, `--a hybrid-trigram --b or` and
+`--a hybrid-trigram --b or-trigram`.
+
+### A) English, `--repeat 3`
+
+SciFact:
+
+```
+lane                ndcg@10  mrr@10  recall@100  p@10    p50ms  p95ms
+or                  0.6878   0.6497  0.9193      0.0910  2.06   3.68
+hybrid              0.5907   0.5596  0.8552      0.0780  33.64  40.80
+hybrid-k10          0.6066   0.5698  0.7451      0.0820  4.88   7.64
+hybrid-nofloor-k10  0.6083   0.5721  0.7451      0.0820  4.87   7.44
+hybrid-fts-k10      0.6122   0.5772  0.7398      0.0817  4.72   8.96
+hybrid-substr-k10   0.5960   0.5634  0.8963      0.0797  2.18   4.04
+```
+
+NFCorpus:
+
+```
+lane                ndcg@10  mrr@10  recall@100  p@10    p50ms  p95ms
+or                  0.3209   0.5247  0.2458      0.2337  0.61   1.64
+hybrid              0.2988   0.5041  0.2337      0.2149  12.82  34.70
+hybrid-k10          0.3002   0.5043  0.1415      0.2167  2.87   4.50
+hybrid-nofloor-k10  0.3004   0.5043  0.1415      0.2170  2.83   4.76
+hybrid-fts-k10      0.3061   0.4988  0.1442      0.2195  1.19   3.22
+hybrid-substr-k10   0.3024   0.5001  0.2166      0.2161  0.54   1.60
+```
+
+FiQA:
+
+```
+lane                ndcg@10  mrr@10  recall@100  p@10    p50ms  p95ms
+or                  0.2535   0.3164  0.5604      0.0690  13.26  27.85
+hybrid              0.1621   0.2076  0.4774      0.0463  38.09  61.02
+hybrid-k10          0.1891   0.2332  0.2489      0.0554  15.44  30.82
+hybrid-nofloor-k10  0.1968   0.2433  0.2578      0.0573  14.64  29.06
+hybrid-fts-k10      0.1939   0.2455  0.2486      0.0540  19.92  38.15
+hybrid-substr-k10   0.1977   0.2399  0.4847      0.0576  13.03  26.89
+```
+
+TREC-COVID:
+
+```
+lane                ndcg@10  mrr@10  recall@100  p@10    p50ms   p95ms
+or                  0.6020   0.9150  0.1037      0.6240  60.43   82.71
+hybrid              0.4471   0.7411  0.0809      0.4980  81.50   116.44
+hybrid-k10          0.5130   0.8059  0.0142      0.5760  66.57   97.89
+hybrid-nofloor-k10  0.5327   0.8350  0.0143      0.5820  61.54   98.71
+hybrid-fts-k10      0.5115   0.7598  0.0143      0.5800  72.08   107.22
+hybrid-substr-k10   0.5443   0.8026  0.0616      0.6000  60.44   83.49
+```
+
+Per-query compares (all four `*-k10` lanes vs `or`, per dataset; full
+term-count group lines):
+
+```
+== scifact ==
+hybrid-k10 vs or: W=22 T=207 L=71
+terms 1-3  n=1  W=0 T=1 L=0  hybrid-k10: ndcg@10=1.0000 p@10=0.1000  or: ndcg@10=1.0000 p@10=0.1000
+terms 4-6  n=86  W=4 T=67 L=15  hybrid-k10: ndcg@10=0.6497 p@10=0.0837  or: ndcg@10=0.7067 p@10=0.0895
+terms 7+  n=213  W=18 T=139 L=56  hybrid-k10: ndcg@10=0.5874 p@10=0.0812  or: ndcg@10=0.6787 p@10=0.0915
+hybrid-nofloor-k10 vs or: W=23 T=207 L=70
+terms 1-3  n=1  W=0 T=1 L=0  hybrid-nofloor-k10: ndcg@10=1.0000 p@10=0.1000  or: ndcg@10=1.0000 p@10=0.1000
+terms 4-6  n=86  W=5 T=67 L=14  hybrid-nofloor-k10: ndcg@10=0.6555 p@10=0.0837  or: ndcg@10=0.7067 p@10=0.0895
+terms 7+  n=213  W=18 T=139 L=56  hybrid-nofloor-k10: ndcg@10=0.5874 p@10=0.0812  or: ndcg@10=0.6787 p@10=0.0915
+hybrid-fts-k10 vs or: W=15 T=217 L=68
+terms 1-3  n=1  W=0 T=1 L=0  hybrid-fts-k10: ndcg@10=1.0000 p@10=0.1000  or: ndcg@10=1.0000 p@10=0.1000
+terms 4-6  n=86  W=4 T=69 L=13  hybrid-fts-k10: ndcg@10=0.6636 p@10=0.0826  or: ndcg@10=0.7067 p@10=0.0895
+terms 7+  n=213  W=11 T=147 L=55  hybrid-fts-k10: ndcg@10=0.5896 p@10=0.0812  or: ndcg@10=0.6787 p@10=0.0915
+hybrid-substr-k10 vs or: W=18 T=199 L=83
+terms 1-3  n=1  W=0 T=1 L=0  hybrid-substr-k10: ndcg@10=1.0000 p@10=0.1000  or: ndcg@10=1.0000 p@10=0.1000
+terms 4-6  n=86  W=3 T=68 L=15  hybrid-substr-k10: ndcg@10=0.6475 p@10=0.0814  or: ndcg@10=0.7067 p@10=0.0895
+terms 7+  n=213  W=15 T=130 L=68  hybrid-substr-k10: ndcg@10=0.5734 p@10=0.0789  or: ndcg@10=0.6787 p@10=0.0915
+== nfcorpus ==
+hybrid-k10 vs or: W=50 T=201 L=72
+terms 1-3  n=234  W=26 T=173 L=35  hybrid-k10: ndcg@10=0.3148 p@10=0.2244  or: ndcg@10=0.3305 p@10=0.2355
+terms 4-6  n=83  W=24 T=24 L=35  hybrid-k10: ndcg@10=0.2752 p@10=0.2084  or: ndcg@10=0.3054 p@10=0.2373
+terms 7+  n=6  W=0 T=4 L=2  hybrid-k10: ndcg@10=0.0773 p@10=0.0333  or: ndcg@10=0.1601 p@10=0.1167
+hybrid-nofloor-k10 vs or: W=49 T=203 L=71
+terms 1-3  n=234  W=25 T=175 L=34  hybrid-nofloor-k10: ndcg@10=0.3151 p@10=0.2248  or: ndcg@10=0.3305 p@10=0.2355
+terms 4-6  n=83  W=24 T=24 L=35  hybrid-nofloor-k10: ndcg@10=0.2752 p@10=0.2084  or: ndcg@10=0.3054 p@10=0.2373
+terms 7+  n=6  W=0 T=4 L=2  hybrid-nofloor-k10: ndcg@10=0.0773 p@10=0.0333  or: ndcg@10=0.1601 p@10=0.1167
+hybrid-fts-k10 vs or: W=24 T=247 L=52
+terms 1-3  n=234  W=9 T=207 L=18  hybrid-fts-k10: ndcg@10=0.3244 p@10=0.2286  or: ndcg@10=0.3305 p@10=0.2355
+terms 4-6  n=83  W=15 T=38 L=30  hybrid-fts-k10: ndcg@10=0.2704 p@10=0.2048  or: ndcg@10=0.3054 p@10=0.2373
+terms 7+  n=6  W=0 T=2 L=4  hybrid-fts-k10: ndcg@10=0.0879 p@10=0.0667  or: ndcg@10=0.1601 p@10=0.1167
+hybrid-substr-k10 vs or: W=43 T=208 L=72
+terms 1-3  n=234  W=20 T=177 L=37  hybrid-substr-k10: ndcg@10=0.3209 p@10=0.2252  or: ndcg@10=0.3305 p@10=0.2355
+terms 4-6  n=83  W=22 T=28 L=33  hybrid-substr-k10: ndcg@10=0.2641 p@10=0.2024  or: ndcg@10=0.3054 p@10=0.2373
+terms 7+  n=6  W=1 T=3 L=2  hybrid-substr-k10: ndcg@10=0.1122 p@10=0.0500  or: ndcg@10=0.1601 p@10=0.1167
+== fiqa ==
+hybrid-k10 vs or: W=95 T=356 L=197
+terms 1-3  n=34  W=5 T=25 L=4  hybrid-k10: ndcg@10=0.0714 p@10=0.0382  or: ndcg@10=0.0709 p@10=0.0324
+terms 4-6  n=264  W=28 T=155 L=81  hybrid-k10: ndcg@10=0.1879 p@10=0.0492  or: ndcg@10=0.2597 p@10=0.0652
+terms 7+  n=350  W=62 T=176 L=112  hybrid-k10: ndcg@10=0.2015 p@10=0.0617  or: ndcg@10=0.2665 p@10=0.0754
+hybrid-nofloor-k10 vs or: W=103 T=355 L=190
+terms 1-3  n=34  W=5 T=25 L=4  hybrid-nofloor-k10: ndcg@10=0.0932 p@10=0.0412  or: ndcg@10=0.0709 p@10=0.0324
+terms 4-6  n=264  W=35 T=155 L=74  hybrid-nofloor-k10: ndcg@10=0.1989 p@10=0.0530  or: ndcg@10=0.2597 p@10=0.0652
+terms 7+  n=350  W=63 T=175 L=112  hybrid-nofloor-k10: ndcg@10=0.2054 p@10=0.0620  or: ndcg@10=0.2665 p@10=0.0754
+hybrid-fts-k10 vs or: W=73 T=382 L=193
+terms 1-3  n=34  W=0 T=28 L=6  hybrid-fts-k10: ndcg@10=0.0454 p@10=0.0176  or: ndcg@10=0.0709 p@10=0.0324
+terms 4-6  n=264  W=25 T=164 L=75  hybrid-fts-k10: ndcg@10=0.1978 p@10=0.0492  or: ndcg@10=0.2597 p@10=0.0652
+terms 7+  n=350  W=48 T=190 L=112  hybrid-fts-k10: ndcg@10=0.2054 p@10=0.0611  or: ndcg@10=0.2665 p@10=0.0754
+hybrid-substr-k10 vs or: W=101 T=356 L=191
+terms 1-3  n=34  W=5 T=25 L=4  hybrid-substr-k10: ndcg@10=0.0756 p@10=0.0353  or: ndcg@10=0.0709 p@10=0.0324
+terms 4-6  n=264  W=32 T=152 L=80  hybrid-substr-k10: ndcg@10=0.1897 p@10=0.0519  or: ndcg@10=0.2597 p@10=0.0652
+terms 7+  n=350  W=64 T=179 L=107  hybrid-substr-k10: ndcg@10=0.2156 p@10=0.0640  or: ndcg@10=0.2665 p@10=0.0754
+== trec-covid ==
+hybrid-k10 vs or: W=17 T=0 L=33
+terms 1-3  n=1  W=0 T=0 L=1  hybrid-k10: ndcg@10=0.2646 p@10=0.3000  or: ndcg@10=0.2973 p@10=0.4000
+terms 4-6  n=27  W=10 T=0 L=17  hybrid-k10: ndcg@10=0.4772 p@10=0.5630  or: ndcg@10=0.5693 p@10=0.6000
+terms 7+  n=22  W=7 T=0 L=15  hybrid-k10: ndcg@10=0.5682 p@10=0.6045  or: ndcg@10=0.6560 p@10=0.6636
+hybrid-nofloor-k10 vs or: W=19 T=1 L=30
+terms 1-3  n=1  W=0 T=0 L=1  hybrid-nofloor-k10: ndcg@10=0.2646 p@10=0.3000  or: ndcg@10=0.2973 p@10=0.4000
+terms 4-6  n=27  W=11 T=1 L=15  hybrid-nofloor-k10: ndcg@10=0.5014 p@10=0.5704  or: ndcg@10=0.5693 p@10=0.6000
+terms 7+  n=22  W=8 T=0 L=14  hybrid-nofloor-k10: ndcg@10=0.5832 p@10=0.6091  or: ndcg@10=0.6560 p@10=0.6636
+hybrid-fts-k10 vs or: W=16 T=2 L=32
+terms 1-3  n=1  W=0 T=0 L=1  hybrid-fts-k10: ndcg@10=0.2646 p@10=0.3000  or: ndcg@10=0.2973 p@10=0.4000
+terms 4-6  n=27  W=11 T=1 L=15  hybrid-fts-k10: ndcg@10=0.4706 p@10=0.5481  or: ndcg@10=0.5693 p@10=0.6000
+terms 7+  n=22  W=5 T=1 L=16  hybrid-fts-k10: ndcg@10=0.5728 p@10=0.6318  or: ndcg@10=0.6560 p@10=0.6636
+hybrid-substr-k10 vs or: W=23 T=4 L=23
+terms 1-3  n=1  W=0 T=0 L=1  hybrid-substr-k10: ndcg@10=0.1795 p@10=0.2000  or: ndcg@10=0.2973 p@10=0.4000
+terms 4-6  n=27  W=12 T=3 L=12  hybrid-substr-k10: ndcg@10=0.5083 p@10=0.5704  or: ndcg@10=0.5693 p@10=0.6000
+terms 7+  n=22  W=11 T=1 L=10  hybrid-substr-k10: ndcg@10=0.6051 p@10=0.6545  or: ndcg@10=0.6560 p@10=0.6636
+```
+
+### B) German, `--repeat 3` (STEMMER `17e64135d75c6948baa113479e80548cc93ba74c`)
+
+GermanDPR:
+
+```
+lane            ndcg@10  mrr@10  recall@100  p@10    p50ms  p95ms
+or              0.4797   0.3759  0.9454      0.0816  1.08   2.44
+or-trigram      0.5338   0.4332  0.9600      0.0856  3.16   5.84
+hybrid          0.5160   0.4177  0.9298      0.0832  1.01   2.30
+hybrid-trigram  0.5257   0.4321  0.9522      0.0823  3.12   5.80
+db size MB: unicode61=7.69 trigram=19.93
+```
+
+GovService:
+
+```
+lane            ndcg@10  mrr@10  recall@100  p@10    p50ms  p95ms
+or              0.6937   0.6378  0.9160      0.0866  0.16   0.53
+or-trigram      0.7628   0.7164  0.9692      0.0905  0.57   0.88
+hybrid          0.7217   0.6723  0.9104      0.0874  0.28   0.68
+hybrid-trigram  0.7489   0.6994  0.9468      0.0902  0.62   1.00
+db size MB: unicode61=0.26 trigram=0.64
+```
+
+Per-query compares:
+
+```
+== germandpr ==
+hybrid-trigram vs or: W=345 T=447 L=233
+terms 1-3  n=125  W=34 T=58 L=33  hybrid-trigram: ndcg@10=0.4471 p@10=0.0784  or: ndcg@10=0.4366 p@10=0.0792
+terms 4-6  n=595  W=198 T=261 L=136  hybrid-trigram: ndcg@10=0.5035 p@10=0.0805  or: ndcg@10=0.4565 p@10=0.0795
+terms 7+  n=305  W=113 T=128 L=64  hybrid-trigram: ndcg@10=0.6013 p@10=0.0875  or: ndcg@10=0.5425 p@10=0.0866
+hybrid-trigram vs or-trigram: W=165 T=677 L=183
+terms 1-3  n=125  W=8 T=103 L=14  hybrid-trigram: ndcg@10=0.4471 p@10=0.0784  or-trigram: ndcg@10=0.4671 p@10=0.0824
+terms 4-6  n=595  W=92 T=400 L=103  hybrid-trigram: ndcg@10=0.5035 p@10=0.0805  or-trigram: ndcg@10=0.5165 p@10=0.0839
+terms 7+  n=305  W=65 T=174 L=66  hybrid-trigram: ndcg@10=0.6013 p@10=0.0875  or-trigram: ndcg@10=0.5947 p@10=0.0902
+== govservice ==
+hybrid-trigram vs or: W=92 T=220 L=45
+terms 1-3  n=66  W=12 T=53 L=1  hybrid-trigram: ndcg@10=0.6880 p@10=0.0788  or: ndcg@10=0.6312 p@10=0.0773
+terms 4-6  n=180  W=47 T=104 L=29  hybrid-trigram: ndcg@10=0.7365 p@10=0.0900  or: ndcg@10=0.6797 p@10=0.0867
+terms 7+  n=111  W=33 T=63 L=15  hybrid-trigram: ndcg@10=0.8052 p@10=0.0973  or: ndcg@10=0.7537 p@10=0.0919
+hybrid-trigram vs or-trigram: W=18 T=317 L=22
+terms 1-3  n=66  W=0 T=66 L=0  hybrid-trigram: ndcg@10=0.6880 p@10=0.0788  or-trigram: ndcg@10=0.6880 p@10=0.0788
+terms 4-6  n=180  W=11 T=157 L=12  hybrid-trigram: ndcg@10=0.7365 p@10=0.0900  or-trigram: ndcg@10=0.7464 p@10=0.0894
+terms 7+  n=111  W=7 T=94 L=10  hybrid-trigram: ndcg@10=0.8052 p@10=0.0973  or-trigram: ndcg@10=0.8337 p@10=0.0991
+```
+
+### Facts (no recommendation)
+
+None of the `*-k10` lanes was tuned on any dataset (k=10 and the 50-pool
+are the library default), so E5 must hold on every dataset. Against `or`,
+same runs; E5 assessed without the line-count criterion:
+
+| lane | dataset | ΔnDCG@10 | ΔP@10 | p95 ratio | E5 |
+|------|---------|---------:|------:|----------:|----|
+| `hybrid-k10` | SciFact | −0.0812 | −0.0090 | 7.64/3.68 = 2.08 | not met (nDCG, P@10) |
+| `hybrid-k10` | NFCorpus | −0.0207 | −0.0170 | 4.50/1.64 = 2.74 | not met (nDCG, P@10) |
+| `hybrid-k10` | FiQA | −0.0644 | −0.0136 | 30.82/27.85 = 1.11 | not met (nDCG, P@10) |
+| `hybrid-k10` | TREC-COVID | −0.0890 | −0.0480 | 97.89/82.71 = 1.18 | not met (nDCG, P@10) |
+| `hybrid-nofloor-k10` | SciFact | −0.0795 | −0.0090 | 7.44/3.68 = 2.02 | not met (nDCG, P@10) |
+| `hybrid-nofloor-k10` | NFCorpus | −0.0205 | −0.0167 | 4.76/1.64 = 2.90 | not met (nDCG, P@10) |
+| `hybrid-nofloor-k10` | FiQA | −0.0567 | −0.0117 | 29.06/27.85 = 1.04 | not met (nDCG, P@10) |
+| `hybrid-nofloor-k10` | TREC-COVID | −0.0693 | −0.0420 | 98.71/82.71 = 1.19 | not met (nDCG, P@10) |
+| `hybrid-fts-k10` | SciFact | −0.0756 | −0.0093 | 8.96/3.68 = 2.43 | not met (nDCG, P@10) |
+| `hybrid-fts-k10` | NFCorpus | −0.0148 | −0.0142 | 3.22/1.64 = 1.96 | not met (nDCG, P@10) |
+| `hybrid-fts-k10` | FiQA | −0.0596 | −0.0150 | 38.15/27.85 = 1.37 | not met (nDCG, P@10) |
+| `hybrid-fts-k10` | TREC-COVID | −0.0905 | −0.0440 | 107.22/82.71 = 1.30 | not met (nDCG, P@10) |
+| `hybrid-substr-k10` | SciFact | −0.0918 | −0.0113 | 4.04/3.68 = 1.10 | not met (nDCG, P@10) |
+| `hybrid-substr-k10` | NFCorpus | −0.0185 | −0.0176 | 1.60/1.64 = 0.98 | not met (nDCG, P@10) |
+| `hybrid-substr-k10` | FiQA | −0.0558 | −0.0114 | 26.89/27.85 = 0.97 | not met (nDCG, P@10) |
+| `hybrid-substr-k10` | TREC-COVID | −0.0577 | −0.0240 | 83.49/82.71 = 1.01 | not met (nDCG, P@10) |
+
+`hybrid-trigram` (untuned on both German datasets) against `or`:
+
+| dataset | ΔnDCG@10 | ΔP@10 | p95 ratio | E5 |
+|---------|---------:|------:|----------:|----|
+| GermanDPR | +0.0460 | +0.0007 | 5.80/2.44 = 2.38 | met on the three measurable conditions |
+| GovService | +0.0552 | +0.0036 | 1.00/0.53 = 1.89 | met on the three measurable conditions |
+
+ΔnDCG@10 of `hybrid-trigram` against `or-trigram`: GermanDPR
+0.5257 − 0.5338 = **−0.0081**; GovService 0.7489 − 0.7628 = **−0.0139**.

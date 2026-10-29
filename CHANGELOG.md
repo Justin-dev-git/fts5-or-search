@@ -3,6 +3,48 @@
 All notable changes to this project are documented here.
 Behavior changes to public functions are marked **Behavior change**.
 
+## Unreleased
+
+### Added: STOPWORDS_DE and the German recommendation
+- `STOPWORDS_DE` (94 entries) is exported: an exact copy of `STOPWORDS` in
+  german-fts5-stemmer 17e64135, the list all German measurements used
+  (checked member by member and in order during review).
+- README: German quick start (OR on a `trigram remove_diacritics 1` index
+  with `STOPWORDS_DE`) and the German results of T16-T18; English table 3
+  gains the k=10 re-rank lanes of T18 and the TREC-COVID value of `hybrid`.
+- `test/german-recipe.test.mjs` runs the README recipe (sub-word hit, folded
+  umlauts, stopword kept out of the trigram match).
+
+### Added: German measurement mode (bench only, no library change)
+- `scripts/beir-bench.mjs --lang de --stemmer <path/to/stem-german.mjs>`:
+  lanes `and`, `or`, `or-stem`, `or-stem-paradigm` (german-fts5-stemmer
+  variants, ORed) and `or-trigram` (FTS5 `trigram` tokenizer) on a
+  `unicode61` index, one stopword list for all lanes; reports the in-memory
+  database size of both indexes. The stemmer is loaded at run time and is not
+  a dependency. English mode is unchanged (rankings and per-query output
+  byte-identical on beir-mini, beir-blend and a 5 000-doc synthetic corpus).
+- `scripts/to-beir.mjs`: converts GermanDPR JSON and Hugging Face dataset
+  viewer rows (SQuAD-style) into the BEIR layout.
+- Tests: `test/de-bench.test.mjs` (stub stemmer, reference values on
+  `test/fixtures/beir-de-mini`), `test/to-beir.test.mjs`.
+- German lanes `hybrid` and `hybrid-expanded` (T17): the coverage re-rank
+  of german-fts5-stemmer's `bench.mjs` (`fts-hybrid`, `fts-hybrid-expanded`)
+  reproduced exactly — 50-row pool, substring coverage per term group on the
+  lower-cased text, `coverage*1000 + 1/(i+1)`. T16 had left out
+  `hybrid-expanded`, the best lane on the private corpus. New fixture
+  `test/fixtures/beir-de-lanes` (q4: only the re-rank lanes rank the
+  full-coverage document first; a broken coverage fails the test).
+- English re-rank lanes at the library's normal top-10 use (T18):
+  `hybrid-k10`, `hybrid-nofloor-k10`, `hybrid-fts-k10` (`hybridSearch` with
+  k=10, i.e. an OR pool of 50) and `hybrid-substr-k10` (the German T17
+  re-rank on English). The `hybrid*` lanes of T11-T14 ran with k=100, so
+  they re-ranked a 500-row pool, which is not how `hybridSearch` is used for a
+  top-10 result. Fixture `test/fixtures/beir-pool` shows the effect: pool 500
+  pulls a long all-terms document from BM25 rank 57 above the relevant one,
+  pool 50 does not (unless the AND floor adds it back).
+- German lane `hybrid-trigram` (T18): trigram OR pool + the same substring
+  coverage re-rank.
+
 ## 0.2.0 (unreleased)
 
 ### Changed: package and repository renamed to fts5-or-search
