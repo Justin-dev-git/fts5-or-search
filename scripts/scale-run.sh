@@ -14,7 +14,8 @@
 # "10000 100000 1000000"), QUERIES (1000), FULL (1 = also the whole corpus),
 # FULL_QUERIES (300), REPEAT (2), FULL_REPEAT (1), LANE_TIMEOUT (6h), MIN_FREE_GB (20),
 # EN_LANES / DE_LANES (default: every lane that was a candidate before, at
-# the parameters chosen then).
+# the parameters chosen then), FULL_EN_LANES / FULL_DE_LANES (lanes for the
+# whole corpus; default: the same lists).
 # Exit codes: 0 done, 2 id hashes differ, 3 disk full, 4 a lane failed.
 set -uo pipefail
 : "${SCALE_DIR:?set SCALE_DIR}" "${STEMMER:?set STEMMER}"
@@ -29,6 +30,8 @@ LANE_TIMEOUT=${LANE_TIMEOUT:-6h}
 MIN_FREE_GB=${MIN_FREE_GB:-20}
 EN_LANES=${EN_LANES:-"and or hybrid hybrid-fts hybrid-k10 hybrid-nofloor-k10 hybrid-fts-k10 hybrid-substr-k10 blend-0.1 blendidf-0.1"}
 DE_LANES=${DE_LANES:-"and or or-stem or-trigram hybrid hybrid-expanded hybrid-trigram"}
+FULL_EN_LANES=${FULL_EN_LANES:-$EN_LANES}
+FULL_DE_LANES=${FULL_DE_LANES:-$DE_LANES}
 RES="$SCALE_DIR/results"
 mkdir -p "$RES" "$SCALE_DIR/db"
 
@@ -43,6 +46,7 @@ labels="$SIZES"
 log "start sizes=[$labels] queries=$QUERIES full_queries=$FULL_QUERIES repeat=$REPEAT full_repeat=$FULL_REPEAT timeout=$LANE_TIMEOUT"
 log "en lanes: $EN_LANES"
 log "de lanes: $DE_LANES"
+[ "$FULL" = 1 ] && log "full-size lanes: en [$FULL_EN_LANES] de [$FULL_DE_LANES]"
 
 for N in $labels; do
   if [ "$N" = all ]; then q=$FULL_QUERIES; d=999999999; rep=$FULL_REPEAT; else q=$QUERIES; d=$N; rep=$REPEAT; fi
@@ -64,7 +68,8 @@ for N in $labels; do
   for L in en de; do
     db="$SCALE_DIR/db/$L-$N"
     mkdir -p "$db"
-    if [ "$L" = en ]; then lanes=$EN_LANES; langargs=(); else lanes=$DE_LANES; langargs=(--lang de --stemmer "$STEMMER"); fi
+    if [ "$L" = en ]; then lanes=$EN_LANES; full=$FULL_EN_LANES; langargs=(); else lanes=$DE_LANES; full=$FULL_DE_LANES; langargs=(--lang de --stemmer "$STEMMER"); fi
+    [ "$N" = all ] && lanes=$full
     for lane in $lanes; do
       res="$RES/$L-$N.$lane.txt"
       if [ -f "$res" ] || [ -f "$res.timeout" ]; then log "skip $L-$N $lane (done earlier)"; continue; fi

@@ -101,3 +101,22 @@ test('scale-run.sh: subsets, id hash, one process per lane, compares, summary; r
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('scale-run.sh: FULL=0 skips the whole corpus; FULL_*_LANES limit the full-size lanes', () => {
+  const root = mkdtempSync(join(tmpdir(), 'scale-run-'));
+  try {
+    convert(root);
+    const base = { SCALE_DIR: root, STEMMER: p('./fixtures/de/stub-stemmer.mjs'), QUERIES: '3', FULL_QUERIES: '2', REPEAT: '1' };
+    const run = (env) => spawnSync('bash', [p('../scripts/scale-run.sh')], { encoding: 'utf8', env: { ...process.env, ...base, ...env } });
+    assert.equal(run({ SIZES: '5', FULL: '0' }).status, 0);
+    assert.equal(existsSync(join(root, 'beir', 'en-all')), false, 'FULL=0: no full-size subset');
+    const later = run({ SIZES: '5', FULL: '1', FULL_EN_LANES: 'and or', FULL_DE_LANES: 'and or or-trigram' });
+    assert.equal(later.status, 0, later.stdout);
+    assert.equal((later.stdout.match(/ skip /g) ?? []).length, 17, 'the earlier size is not measured again');
+    const has = (f) => existsSync(join(root, 'results', f));
+    assert.ok(has('en-all.or.txt') && has('de-all.or-trigram.txt'));
+    assert.equal(has('en-all.hybrid-k10.txt') || has('de-all.hybrid-expanded.txt'), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
