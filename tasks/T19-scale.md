@@ -5,21 +5,27 @@ Arbeits-Branch: scale-2026-10-29
 
 ## Ziel
 Wie verhalten sich die Suchen, wenn der Korpus wächst?
-- **Englisch:** `or` auf `porter unicode61`, Referenz `and`.
-- **Deutsch:**
-  - `or-trigram`
-  - `hybrid` (Re-Rank) und `hybrid-expanded` (Stemmer plus Re-Rank, die
-    Lane des Owners)
-  - Referenz `or` und `and` auf `unicode61`
+Gemessen wird jede Lane, die schon einmal Kandidat war, mit den damals
+gewählten Parametern:
+- **Englisch** (`porter unicode61`), 10 Lanes: `and`, `or`, `hybrid`,
+  `hybrid-fts` (500er-Pool), `hybrid-k10`, `hybrid-nofloor-k10`,
+  `hybrid-fts-k10`, `hybrid-substr-k10` (50er-Pool), `blend-0.1` und
+  `blendidf-0.1`.
+- **Deutsch** (`unicode61` bzw. `trigram`), 7 Lanes: `and`, `or`,
+  `or-stem`, `or-trigram`, `hybrid`, `hybrid-expanded` (die Lane des
+  Owners) und `hybrid-trigram`.
 
 Gemessen werden Qualität, Latenz, Bauzeit und Indexgröße bei 10 000,
 100 000, 1 000 000 und allen 8 841 823 Abschnitten. Bei den drei kleineren
-Größen laufen 1000 Fragen, bei voller Größe die ersten 300 davon.
+Größen laufen 1000 Fragen mit 2 Wiederholungen. Bei voller Größe sind es
+die ersten 300 davon mit 1 Wiederholung, sonst würde der Lauf nicht über
+Nacht fertig.
 
 Grundlage ist **mMARCO**: MS MARCO im englischen Original und in deutscher
 Übersetzung, mit denselben Abschnitts-IDs und denselben Relevanzurteilen.
 Beide Sprachen sehen bei jeder Größe also dieselben Abschnitte und Fragen.
-Keine Lane wurde auf mMARCO abgestimmt.
+Keine Lane wurde auf mMARCO abgestimmt. Für Englisch ist mMARCO der fünfte
+Datensatz, für Deutsch der dritte.
 
 Die Task hat **zwei Phasen**:
 - **A** startet den langen Lauf im Hintergrund.
@@ -118,16 +124,18 @@ Erlaubte Dateien:
        Größe, pro Lane. Dazu der Hinweis 300 statt 1000 Fragen bei voller
        Größe.
      - Verhältnis trigram zu unicode61 bei voller Größe.
-     - ΔnDCG@10 gegen `or` für `or-trigram`, `hybrid` und `hybrid-expanded`
-       bei jeder Größe, und ΔnDCG@10 von `hybrid-expanded` gegen
+     - ΔnDCG@10 und ΔP@10 gegen `or` für jede Lane und jede Größe, in
+       beiden Sprachen.
+     - ΔnDCG@10 von `hybrid-expanded` und von `hybrid-trigram` gegen
        `or-trigram`.
+     - Bei voller Größe lief 1 Wiederholung statt 2.
    
    Commit `T19: Schritt B2 – …`.
 3. Gate, Push und Report nach AGENTS.md, als Kommentar auf PR #2.
 
 ## Prüfung
 ```bash
-git diff --quiet c80b332 -- lib scripts test package.json
+git diff --quiet 3f01f55 -- lib scripts test package.json
 grep -F "## T19 – Scale (MS MARCO / mMARCO)" docs/VALIDATION.md
 grep -E "^[0-9a-f]{64}  .*english_collection\.tsv" docs/VALIDATION.md
 grep -E "^[0-9a-f]{64}  .*german_collection\.tsv" docs/VALIDATION.md
@@ -135,6 +143,8 @@ grep -E "^[0-9a-f]{64}  .*qrels\.dev\.small\.tsv" docs/VALIDATION.md
 grep -F "id sequence identical for en and de at every size" docs/VALIDATION.md
 sed -n '/^## T19/,$p' docs/VALIDATION.md | grep -F "or-trigram vs or: W="
 sed -n '/^## T19/,$p' docs/VALIDATION.md | grep -F "hybrid-expanded vs or-trigram: W="
+sed -n '/^## T19/,$p' docs/VALIDATION.md | grep -F "hybrid-k10 vs or: W="
+sed -n '/^## T19/,$p' docs/VALIDATION.md | grep -F "blend-0.1 vs or: W="
 sed -n '/^## T19/,$p' docs/VALIDATION.md | grep -E "^\| all \| [0-9]+ \| 300 \| or \|"
 ! grep -nE "/home/|/Users/" docs/VALIDATION.md
 ```
@@ -149,8 +159,10 @@ sed -n '/^## T19/,$p' docs/VALIDATION.md | grep -E "^\| all \| [0-9]+ \| 300 \| 
     Teilmengen, Hash, alle Lanes, Vergleiche, Zusammenfassung, Fortsetzen
     nach Neustart, Zeitlimit-Pfad.
   - Lasttest mit 1 Mio. synthetischen Dokumenten: Teilmenge in 7 s und
-    239 MB, Index auf der Platte 400 MB, rund 1,2 s pro OR-Anfrage, die
-    fast alles trifft.
+    239 MB, Index auf der Platte 400 MB. Pro Anfrage, die fast alles
+    trifft, liegt der Median für `or` bei 1,4 s, für `hybrid-fts` bei
+    1,4 s und für `hybrid-k10` bei 1,2 s. Die Zeit geht in die
+    OR-Abfrage, nicht ins Re-Rank.
 - **Platzbedarf:** rund 6,5 GB Rohdaten und 7 GB konvertiert. Dazu kommen
   die Indizes jeweils nur einer Größe, weil `scale-run.sh` sie nach jeder
   Größe löscht.
