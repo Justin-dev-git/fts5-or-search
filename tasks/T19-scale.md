@@ -1,4 +1,4 @@
-# T19: Skalierung – Englisch und Deutsch bis 8,8 Mio. Abschnitte
+# T19: Skalierung – Englisch und Deutsch, 10 000 bis 1 Mio. Abschnitte
 
 Stufe: 1 (nur Messung; Code und Tests sind im Review entstanden)
 Arbeits-Branch: scale-2026-10-29
@@ -16,10 +16,9 @@ gewählten Parametern:
   Owners) und `hybrid-trigram`.
 
 Gemessen werden Qualität, Latenz, Bauzeit und Indexgröße bei 10 000,
-100 000, 1 000 000 und allen 8 841 823 Abschnitten. Bei den drei kleineren
-Größen laufen 1000 Fragen mit 2 Wiederholungen. Bei voller Größe sind es
-die ersten 300 davon mit 1 Wiederholung, sonst würde der Lauf nicht über
-Nacht fertig.
+100 000 und 1 000 000 Abschnitten, mit je 1000 Fragen und 2 Wiederholungen.
+Die volle Größe von 8 841 823 Abschnitten folgt später als eigene Task.
+`scale-run.sh` setzt dann einfach fort.
 
 Grundlage ist **mMARCO**: MS MARCO im englischen Original und in deutscher
 Übersetzung, mit denselben Abschnitts-IDs und denselben Relevanzurteilen.
@@ -28,7 +27,8 @@ Keine Lane wurde auf mMARCO abgestimmt. Für Englisch ist mMARCO der fünfte
 Datensatz, für Deutsch der dritte.
 
 Die Task hat **zwei Phasen**:
-- **A** startet den langen Lauf im Hintergrund.
+- **A** startet den Lauf im Hintergrund. Geschätzt dauert er 2 bis 3
+  Stunden, siehe Referenzwerte.
 - **B** dokumentiert, sobald der Lauf fertig ist.
 
 Am Code änderst du nichts.
@@ -51,7 +51,7 @@ Erlaubte Dateien:
    ```
    - `findmnt` meldet `tmpfs`: **STOPP**. `/tmp` liegt auf Fedora im
      Arbeitsspeicher.
-   - Weniger als **80 GB** frei oder unter „available“ weniger als
+   - Weniger als **30 GB** frei oder unter „available“ weniger als
      **8 GB** RAM: **STOPP**.
    - vLLM und andere Prozesse fasst du nicht an.
    - Die Ausgaben dieser Befehle hebst du für Phase B auf.
@@ -72,9 +72,9 @@ Erlaubte Dateien:
    ```
    Referenz für beide Sprachen: `docs=8841823 queries=6980 qrels=7437`.
    Abweichungen meldest du, nicht anpassen.
-4. **Lauf im Hintergrund starten.** Er läuft viele Stunden, gut über Nacht:
+4. **Lauf im Hintergrund starten**, ohne volle Größe (`FULL=0`):
    ```bash
-   cd "$REPO" && SCALE_DIR="$SCALE_DIR" STEMMER="$STEMMER" nohup bash scripts/scale-run.sh > "$SCALE_DIR/scale-run.nohup.log" 2>&1 &
+   cd "$REPO" && SCALE_DIR="$SCALE_DIR" STEMMER="$STEMMER" FULL=0 nohup bash scripts/scale-run.sh > "$SCALE_DIR/scale-run.nohup.log" 2>&1 &
    sleep 60; tail -5 "$SCALE_DIR/results/run.log"
    ```
    Das Skript macht selbstständig:
@@ -114,28 +114,23 @@ Erlaubte Dateien:
    - Alle `results/compare-*.txt` vollständig.
    - Den Befehl aus Phase A, Schritt 4. Für jede Lane mit `timeout` in der
      Tabelle den Hinweis, dass sie das 6-Stunden-Limit überschritten hat.
-   - Plausibilität bei voller Größe, als Differenz:
-     - `or` MRR@10 gegen die veröffentlichten BM25-Werte von mMARCO
-       (Bonifacio et al., 2021): Englisch 0.184, Deutsch (Google) 0.136
-     - Der Hinweis, dass dort alle 6980 Fragen und Pyserini liefen, hier 300
-       Fragen und FTS5.
+   - Ein Satz: Die volle Größe und der Abgleich mit den veröffentlichten
+     BM25-Werten folgen in einer eigenen Task.
    - Am Ende **nur Fakten**, keine Empfehlung:
-     - Faktor von p95 und von der Indexgröße zwischen 100 000 und voller
-       Größe, pro Lane. Dazu der Hinweis 300 statt 1000 Fragen bei voller
-       Größe.
-     - Verhältnis trigram zu unicode61 bei voller Größe.
+     - Faktor von p95 und von der Indexgröße zwischen 100 000 und 1 000 000,
+       pro Lane.
+     - Verhältnis trigram zu unicode61 bei 1 000 000.
      - ΔnDCG@10 und ΔP@10 gegen `or` für jede Lane und jede Größe, in
        beiden Sprachen.
      - ΔnDCG@10 von `hybrid-expanded` und von `hybrid-trigram` gegen
        `or-trigram`.
-     - Bei voller Größe lief 1 Wiederholung statt 2.
    
    Commit `T19: Schritt B2 – …`.
 3. Gate, Push und Report nach AGENTS.md, als Kommentar auf PR #2.
 
 ## Prüfung
 ```bash
-git diff --quiet 3f01f55 -- lib scripts test package.json
+git diff --quiet c2b93a1 -- lib scripts test package.json
 grep -F "## T19 – Scale (MS MARCO / mMARCO)" docs/VALIDATION.md
 grep -E "^[0-9a-f]{64}  .*english_collection\.tsv" docs/VALIDATION.md
 grep -E "^[0-9a-f]{64}  .*german_collection\.tsv" docs/VALIDATION.md
@@ -145,7 +140,7 @@ sed -n '/^## T19/,$p' docs/VALIDATION.md | grep -F "or-trigram vs or: W="
 sed -n '/^## T19/,$p' docs/VALIDATION.md | grep -F "hybrid-expanded vs or-trigram: W="
 sed -n '/^## T19/,$p' docs/VALIDATION.md | grep -F "hybrid-k10 vs or: W="
 sed -n '/^## T19/,$p' docs/VALIDATION.md | grep -F "blend-0.1 vs or: W="
-sed -n '/^## T19/,$p' docs/VALIDATION.md | grep -E "^\| all \| [0-9]+ \| 300 \| or \|"
+sed -n '/^## T19/,$p' docs/VALIDATION.md | grep -E "^\| 1000000 \| [0-9]+ \| 1000 \| or-trigram \|"
 ! grep -nE "/home/|/Users/" docs/VALIDATION.md
 ```
 
@@ -153,7 +148,9 @@ sed -n '/^## T19/,$p' docs/VALIDATION.md | grep -E "^\| all \| [0-9]+ \| 300 \| 
 - **Konvertierung**, je Sprache: `docs=8841823 queries=6980 qrels=7437`
   (MS MARCO passage, dev small).
 - **Veröffentlichte BM25-MRR@10** auf dev, aus mMARCO (Bonifacio et al.,
-  2021, Pyserini): Englisch 0.184, Deutsch mit Google-Übersetzung 0.136.
+  2021, Pyserini): Englisch 0.184, Deutsch mit Google-Übersetzung 0.136. Sie
+  gelten für den vollen Korpus und werden erst in der Folge-Task
+  verglichen.
 - **Im Review geprüft:**
   - `scale-run.sh` auf `test/fixtures/msmarco-mini` (`npm test`):
     Teilmengen, Hash, alle Lanes, Vergleiche, Zusammenfassung, Fortsetzen
@@ -163,9 +160,16 @@ sed -n '/^## T19/,$p' docs/VALIDATION.md | grep -E "^\| all \| [0-9]+ \| 300 \| 
     trifft, liegt der Median für `or` bei 1,4 s, für `hybrid-fts` bei
     1,4 s und für `hybrid-k10` bei 1,2 s. Die Zeit geht in die
     OR-Abfrage, nicht ins Re-Rank.
-- **Platzbedarf:** rund 6,5 GB Rohdaten und 7 GB konvertiert. Dazu kommen
-  die Indizes jeweils nur einer Größe, weil `scale-run.sh` sie nach jeder
-  Größe löscht.
+  - Kalibrierung im Review mit realistischerem deutschen Text: Wörter nach
+    echter Häufigkeit, Abschnitte mit 30 bis 80 Wörtern, 2 Kerne. Von
+    100 000 auf 1 000 000 Abschnitte:
+    - Bauzeit `unicode61` 4,1 → 43,8 s, `trigram` 10,5 → 125 s
+    - Größe 61 → 590 MB bzw. 167 → 1649 MB
+    - p50 `or` 9 → 141 ms, `or-trigram` 44 → 445 ms, `and` 0 → 2 ms
+    - Daraus geschätzt: rund 2 bis 3 Stunden für diesen Lauf, den größten
+      Teil davon bei 1 000 000.
+- **Platzbedarf:** rund 6,5 GB Rohdaten und 7 GB konvertiert, dazu die
+  Indizes einer Größe, bei 1 000 000 etwa 3 GB.
 
 ## Nicht Teil dieser Task
 - Code, Tests, README, Empfehlungen, private Daten, vLLM.
