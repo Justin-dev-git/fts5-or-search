@@ -12,8 +12,8 @@ FTS5's built-in BM25 (`ORDER BY rank`) fixes that.
   German stop word list plus 28 more words). With this list none of the
   tested extensions — a trigram index, a query-side stemmer
   (german-fts5-stemmer), coverage re-ranking — met the adoption criterion on
-  every untuned dataset; at 1 000 000 mMARCO-de passages none was better
-  than OR.
+  every untuned dataset; at 1 000 000 mMARCO-de passages none was more than
+  +0.0011 nDCG@10 above OR.
 - **Scale:** latency and index size grow about linearly with the corpus. At
   1 000 000 passages the OR lane had a p95 of 118.78 ms (English) and
   24.72 ms (German).
@@ -143,9 +143,9 @@ GermanDPR, so GermanDPR is tuned for it; every other cell is untuned.
 |---|---|---:|---:|---:|
 | `and` | strict AND, `unicode61` | 0.0356 | 0.1005 | 0.1508 |
 | **`or`** (reference) | quoted OR, `unicode61` | **0.4807** | **0.7280** | **0.3493** |
-| `or-stem` | OR of all german-fts5-stemmer variants | 0.4891 | 0.7169 | 0.3197 |
+| `or-stem` | OR of all german-fts5-stemmer variants | 0.4895 | 0.7169 | 0.3197 |
 | `hybrid` | `or` + substring coverage re-rank, pool 50 | 0.5192 | 0.7420 | 0.3504 |
-| `hybrid-expanded` | `or-stem` + variant coverage re-rank, pool 50 | 0.5307 | 0.7401 | 0.3451 |
+| `hybrid-expanded` | `or-stem` + variant coverage re-rank, pool 50 | 0.5313 | 0.7401 | 0.3451 |
 | `or-trigram` | quoted OR, `trigram remove_diacritics 1` | 0.5350 | 0.7629 | 0.3500 |
 | `hybrid-trigram` | `or-trigram` + substring coverage re-rank | 0.5292 | 0.7645 | 0.3421 |
 
@@ -213,13 +213,11 @@ time:
 node scripts/beir-bench.mjs --data <dir> --lang de --stemmer <german-fts5-stemmer>/lib/stem-german.mjs --stopwords lib --repeat 3 --json
 ```
 
-`--stopwords lib` uses `STOPWORDS_DE` for every German lane; without it the
-bench uses the stemmer's 94-word list of T16–T19. mMARCO download, conversion
-and the scale runner (`scripts/scale-run.sh`) are in `tasks/T19-scale.md`
-and `tasks/T21-stopwords-de.md`.
-
-```bash
-```
+`--stopwords lib` uses `STOPWORDS_DE` for every German lane, including the
+variants of the stemmer lanes; without it the bench uses the stemmer's
+94-word list of T16–T19. mMARCO download, conversion and the scale runner
+(`scripts/scale-run.sh`) are in `tasks/T19-scale.md` and
+`tasks/T21-stopwords-de.md`.
 
 ```bash
 npm test      # tokenizing, quoting/injection, rerank semantics

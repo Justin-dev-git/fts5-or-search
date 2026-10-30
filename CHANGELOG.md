@@ -18,9 +18,12 @@ Behavior changes to public functions are marked **Behavior change**.
   mMARCO-de and gains +0.0007 nDCG@10 at 1 000 000 passages. README, ZIEL
   and `docs/VALIDATION.md` (T21) updated.
 - `scripts/beir-bench.mjs --stopwords stemmer|lib` (German only; default
-  `stemmer` = the list of T16–T19, output unchanged) and `DE_STOPWORDS` in
-  `scripts/scale-run.sh`; `test/stopwords-de.test.mjs` with fixture
-  `test/fixtures/beir-de-stop`.
+  `stemmer` = the list of T16–T19, output unchanged). With `lib` the stemmer
+  lanes also drop stemmer variants that are in `STOPWORDS_DE` (fixed after
+  the review of T21). `DE_STOPWORDS` in `scripts/scale-run.sh`; a resumed run
+  with other parameters than its first start stops (exit 5).
+  `test/stopwords-de.test.mjs` with fixtures `test/fixtures/beir-de-stop` and
+  `test/fixtures/beir-de-stop-lanes` (all eight German lanes).
 
 ### Added: scale tooling (bench and scripts only, no library change)
 - `scripts/beir-bench.mjs` streams `corpus.jsonl` line by line instead of
