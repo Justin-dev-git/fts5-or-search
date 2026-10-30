@@ -5,6 +5,17 @@ Behavior changes to public functions are marked **Behavior change**.
 
 ## Unreleased
 
+### Changed: README introduction, how to read, OpenClaw case study, conclusion (T27, docs only)
+- New sections `Introduction`, `How to read the results` (method and glossary),
+  `Case study: OpenClaw memory and context` and `Conclusion`; the former
+  `Limitations` section is part of the conclusion.
+- `docs/VALIDATION.md` T28: aggregate numbers from one OpenClaw installation
+  (OR instead of AND: memory search with `STOPWORDS_DE`, `lcm_grep` with the
+  German stemmer; transfer of the T26 prefix queries). No queries, documents
+  or content.
+- The conclusion names the T26 prefix queries as a measured option for German
+  corpora of 50 000 documents or more; the recommendation itself is unchanged.
+
 ### Added: prefix bench lanes (T26, bench only, no library change)
 - `scripts/beir-bench.mjs --prefix-min <n,...>` (German): lanes `or-prefix-<n>`
   run the `or` match on `unicode61` with every word of at least n letters as an
