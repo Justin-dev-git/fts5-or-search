@@ -30,7 +30,15 @@ nDCG@10, MRR@10, Recall@100, Latenz p50/p95.
 | E2 | `hybrid` nDCG@10 ≥ `or` auf beiden Datensätzen | Das Coverage-Re-Rank bringt einen Mehrwert (Kernaussage) |
 | E3 | `hybrid` Recall@100 ≥ `and` Recall@100 | Der AND-Floor hält auf echten Daten |
 | E4 | `hybrid` p95 ≤ 50 ms pro Anfrage | Interaktiv bei diesen Korpusgrößen |
-| E5 | Eine Erweiterung gegenüber `or` wird nur übernommen, wenn sie auf einem **nicht abgestimmten** Datensatz bei nDCG@10 mindestens +0.01 erreicht, bei P@10 nicht schlechter ist, höchstens die 3-fache p95-Latenz von `or` hat und höchstens etwa 50 Zeilen Library-Code kostet. Gibt es mehrere nicht abgestimmte Datensätze, muss E5 auf jedem davon halten | Nutzen pro Aufwand |
+| E5 | Eine Erweiterung gegenüber `or` wird nur übernommen, wenn sie auf einem **nicht abgestimmten** Datensatz bei nDCG@10 mindestens +0.01 erreicht, bei P@10 nicht schlechter ist, bei der p95-Latenz höchstens das 3-Fache von `or` **oder** höchstens 10 ms mehr als `or` braucht (es gilt das Größere; beide im selben Lauf gemessen) und höchstens etwa 50 Zeilen Library-Code kostet. Gibt es mehrere nicht abgestimmte Datensätze, muss E5 auf jedem davon halten. Wird ein Datensatz in mehreren Größen gemessen, zählt jede Größe einzeln | Nutzen pro Aufwand |
+
+**Änderung an E5 (30.10.2026, T22, im Auftrag des Owners):** Bis T21 galt
+für die Latenz nur das 3-Fache von `or`. Bei kleinen Korpora entschieden damit
+Unterschiede von Bruchteilen einer Millisekunde: Auf GovService liegt die
+p95 von `or` bei 0.24 ms, die Grenze also bei 0.72 ms. Solche Unterschiede
+sind weder spürbar noch zwischen zwei Läufen stabil. Die Untergrenze von
+10 ms gilt rückwirkend für alle Messungen. Sie macht E5 nur nachsichtiger;
+keine Empfehlung ändert sich dadurch (`docs/VALIDATION.md`, T22).
 
 ## Abbruch- und Umlenkkriterien (Vorschlag)
 - **E2 scheitert auf beiden Datensätzen:** Das Coverage-Re-Rank fällt aus der
@@ -167,4 +175,16 @@ Alle Zahlen stammen aus `docs/VALIDATION.md`, Abschnitt T21.
 - **Empfehlung Deutsch:** OR auf `unicode61` mit `STOPWORDS_DE`. Trigram
   bleibt eine Option für kleine Korpora mit vielen Komposita, kostet aber
   2.93-mal den Index und ein Mehrfaches der Latenz.
+
+## Ergebnis nach T22 (30.10.2026)
+- Mit der 10-ms-Untergrenze scheitern die deutschen Erweiterungen an der
+  Qualität bei großem Korpus, nicht mehr an Millisekunden: Bei 1 000 000
+  Abschnitten von mMARCO-de liegt jede unter +0.01 nDCG@10. `or-trigram`
+  überschreitet zusätzlich ab 100 000 Abschnitten das Latenzbudget.
+- `hybrid-expanded` erfüllt die messbaren Teile von E5 auf GermanDPR,
+  GovService, mMARCO-de 10 000 und 100 000 und scheitert bei 1 000 000
+  (−0.0042). Es braucht außerdem german-fts5-stemmer als Zusatzpaket.
+- Englisch: Jede Erweiterung scheitert schon an nDCG@10; die Änderung wirkt
+  dort nicht.
+- Die Empfehlung bleibt für beide Sprachen OR mit FTS5-BM25.
 
