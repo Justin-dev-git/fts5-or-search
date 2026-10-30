@@ -4,7 +4,9 @@
 //   q2 "Ausweis" (rel p "Personalausweis beantragen"): the query word is the END of the compound, so neither `or`
 //      nor a prefix query finds it (0); only trigram does (1).
 //   q3 "Katzen" (rel k "Katzen füttern"): exact token, every lane 1.
-// or 0.3333, or-prefix-4 0.6667, or-prefix-5 0.3333, or-trigram 1.
+//   q4 "E451" (rel e "Fehlercode E4512 beheben"): has digits, so it stays exact in every prefix lane (0); a prefix
+//      "e451"* would match "e4512" (or-prefix-4 would then be 0.75). Trigram finds the substring (1).
+// or 0.25, or-prefix-4 0.5, or-prefix-5 0.25, or-trigram 1.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -23,12 +25,12 @@ function run(args) {
 }
 const lastJson = (s) => JSON.parse(s.trim().split('\n').at(-1));
 
-test('--prefix-min: words of at least n letters become prefix queries; compound heads are not found', () => {
+test('--prefix-min: words of at least n letters become prefix queries; codes stay exact; compound heads are not found', () => {
   const r = run(['--data', data, '--lang', 'de', '--stemmer', stub, '--stopwords', 'lib', '--prefix-min', '4,5',
     '--lanes', 'or,or-trigram,or-prefix-4,or-prefix-5', '--repeat', '1', '--json']);
   assert.equal(r.code, 0, r.stderr);
   const L = lastJson(r.stdout).lanes;
-  const want = { or: 0.3333, 'or-prefix-4': 0.6667, 'or-prefix-5': 0.3333, 'or-trigram': 1 };
+  const want = { or: 0.25, 'or-prefix-4': 0.5, 'or-prefix-5': 0.25, 'or-trigram': 1 };
   for (const [lane, v] of Object.entries(want)) assert.equal(L[lane].ndcg10, v, lane);
 });
 

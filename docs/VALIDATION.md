@@ -2563,13 +2563,15 @@ times the size and fails the E5 latency budget on medium and large corpora
 (T25). Do FTS5 prefix queries (`"hund"*`) on the normal `unicode61` index get a
 similar gain without a second index?
 
-Code: commit `971bd84` on this branch (`scripts/beir-bench.mjs` byte-identical
-to commit `5aad34f`, at which the numbers were measured). `--prefix-min <n,...>`
+Code: commit `971bd84` (`scripts/beir-bench.mjs` byte-identical to the local
+measurement commit `5aad34f`; the library differs only in the `adaptiveSearch`
+guard from T25, which these lanes do not use). `--prefix-min <n,...>`
 adds the bench lanes `or-prefix-<n>`: the `or` match with every word of at
 least n letters (letters only, so codes and numbers stay exact) as an FTS5
 prefix query; `--stopwords lib`. Bench only, no library change.
 `test/prefix.test.mjs` with fixture `test/fixtures/beir-de-prefix` checks the
-lane by hand-computed values, including its blind spot: a prefix query finds
+lane by hand-computed values: the length threshold, codes with digits staying
+exact, and its blind spot: a prefix query finds
 compounds that START with the query word ("Hund" → "Hundehalter"), not those
 that END with it ("Ausweis" → "Personalausweis"); in German the head of a
 compound is its last part, so trigram can still find more.
@@ -2578,17 +2580,18 @@ compound is its last part, so trigram can still find more.
 
 Grid n = 4 … 8 on GermanDPR and the mMARCO-de tuning split of T24 (questions
 1 001–2 000) at 10 000, 100 000 and 1 000 000 passages; chosen: the n with the
-highest mean ΔnDCG@10 against `or` (equal weights). ΔnDCG@10 against `or`:
+highest mean ΔnDCG@10 against `or` (equal weights). ΔnDCG@10 against `or`
+(means of the per-query differences):
 
 | n | GermanDPR (2 876) | mMARCO-de 10 000 | mMARCO-de 100 000 | mMARCO-de 1 000 000 | mean |
 |---:|---:|---:|---:|---:|---:|
-| 4 | +0.0426 | +0.0345 | +0.0240 | +0.0130 | +0.0285 |
+| 4 | +0.0426 | +0.0345 | +0.0240 | +0.0131 | +0.0285 |
 | 5 | +0.0394 | +0.0341 | +0.0251 | +0.0149 | +0.0284 |
 | 6 | +0.0354 | +0.0325 | +0.0228 | +0.0161 | +0.0267 |
-| 7 | +0.0303 | +0.0246 | +0.0163 | +0.0122 | +0.0208 |
-| 8 | +0.0254 | +0.0215 | +0.0131 | +0.0096 | +0.0174 |
+| 7 | +0.0303 | +0.0245 | +0.0163 | +0.0123 | +0.0208 |
+| 8 | +0.0254 | +0.0215 | +0.0131 | +0.0097 | +0.0174 |
 
-n = 4 was chosen; n = 5 is practically tied (−0.0001) and ran in the test as a
+n = 4 was chosen; n = 5 is practically tied (−0.0002) and ran in the test as a
 second, not chosen lane.
 
 ### Test (nothing tuned on these sets)
@@ -2597,10 +2600,12 @@ mMARCO-de test questions 1–1 000 at 10 000 / 100 000 / 1 000 000 passages (the
 T19/T21 subsets), WebFAQ-de 100 000 and 891 201 (3 000 questions each) and
 GerDaLIRSmall (1 000 questions) as in T25. GovService was looked at before the
 tuning and is reported separately as "seen". Lanes
-`and,or,or-trigram,or-prefix-4,or-prefix-5`, one run per set, each pinned to its
-own core, `--repeat 2` (GovService 3). Other work ran on the machine; the core
-of GerDaLIRSmall and GovService was shared with a low-priority (nice 19) CPU job
-during part of their runs, so latencies are compared only within one run.
+`and,or,or-trigram,or-prefix-4,or-prefix-5`, one run per set, `--repeat 2`
+(GovService 3), on five pinned cores (mMARCO-de 10 000, GerDaLIRSmall and
+GovService one after another on the same core). Other work ran on the machine;
+that core was also shared with a low-priority (nice 19) CPU job during part of
+the GerDaLIRSmall and GovService runs, so latencies are compared only within
+one run.
 
 mMARCO-de 10 000:
 
@@ -2724,18 +2729,24 @@ paired bootstrap, 4 000 resamples, the same seed for every lane and set):
 
 ### Facts
 
-- `or-prefix-4` meets the measurable parts of E5 on 6 of 7 untuned sets, in
-  every size class: +0.0174 (mMARCO-de 1 000 000) to +0.0409 (mMARCO-de
-  10 000) nDCG@10, all intervals exclude zero, P@10 never lower.
-- GerDaLIRSmall is the exception: +0.0003 [−0.0071, +0.0080]. Its questions are
-  paragraph-length, so plain OR already matches enough of the right words;
-  trigram does not help there either (−0.0006).
+- `or-prefix-4` meets the measurable parts of E5 on 5 of the 6 untuned sets
+  (+0.0174 on mMARCO-de 1 000 000 to +0.0409 on mMARCO-de 10 000 nDCG@10, all
+  intervals exclude zero, P@10 never lower) and on GovService (seen before the
+  tuning, +0.0237).
+- Per size class (T23: a class counts only if E5 holds on every untuned set of
+  that class): medium and large hold (2 of 2 each, mMARCO-de and WebFAQ-de);
+  small does not, because GerDaLIRSmall (9 969 documents) gains only
+  +0.0003 [−0.0071, +0.0080]. Its questions are paragraph-length; presumably
+  plain OR already matches enough of the right words (not measured). Trigram
+  does not help there either (−0.0006).
 - Against trigram the prefix lane is as good or better on mMARCO-de and WebFAQ-de
   (WebFAQ-de 891 201: 0.4946 vs. 0.4904; mMARCO-de 1 000 000: 0.3668 vs. 0.3500)
   at a fraction of the latency (p95 86.76 vs. 408.66 ms and 64.02 vs. 379.42 ms)
   and without the second index (579 vs. 1 670 MB and 663 vs. 1 942 MB). On
-  GovService trigram stays ahead (0.7629 vs. 0.7516), consistent with the
-  compound blind spot above.
+  mMARCO-de it is significantly better than trigram, on WebFAQ-de the interval
+  contains zero. On GovService trigram is ahead (0.7629 vs. 0.7516), not
+  significantly (prefix-4 minus trigram −0.0112 [−0.0253, +0.0026]); the
+  compound blind spot above is a possible reason.
 - The p95 of the prefix lane is 1.2 to 3 times that of `or` and inside the E5
   budget on every set.
 - n = 4 and n = 5 cannot be told apart on the test sets either (at most 0.0015
