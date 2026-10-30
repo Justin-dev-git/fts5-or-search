@@ -49,3 +49,27 @@ test('beir-bench --stopwords: stemmer (default) keeps "in", lib drops it', () =>
   assert.match(run(['--data', data, '--stopwords', 'lib', '--repeat', '1']).stderr, /--stopwords is German-only/);
   assert.match(run([...base, '--stopwords', 'snowball']).stderr, /--stopwords must be stemmer or lib/);
 });
+
+// test/fixtures/beir-de-stop-lanes, every German lane (review of T21): q1
+// "Hundesteuer wird", q2 "Hundesteuer ausmachen", q3 "Hundesteuer Vor-",
+// all rel a. With the stemmer's list "wird" and "vor" stay terms (b "wird
+// wird wird" and g "vor vor vor" outrank a, as in q1 above; AND needs a doc
+// with both terms: none), and the stemmer variant "machen" of "ausmachen"
+// pulls f "machen machen machen" above a in the stemmer lanes (0.6309 each).
+// hybrid-expanded keeps a first on q3: its substring coverage looks for
+// "vor-", which g lacks. With --stopwords lib "wird" and "vor" (trailing
+// hyphen stripped) are gone in every lane and the variant "machen" (in
+// STOPWORDS_DE) is dropped: every lane ranks a first; only `and` still needs
+// "ausmachen" for q2 (2/3).
+test('beir-bench --stopwords lib reaches every German lane, stemmer variants included', () => {
+  const lanes = fileURLToPath(new URL('./fixtures/beir-de-stop-lanes', import.meta.url));
+  const base = ['--data', lanes, '--lang', 'de', '--stemmer', stub, '--repeat', '1', '--json'];
+  const want = {
+    stemmer: { and: 0, or: 0.754, 'or-stem': 0.6309, 'or-stem-paradigm': 0.6309, 'or-trigram': 0.754, hybrid: 0.754, 'hybrid-expanded': 0.754, 'hybrid-trigram': 0.754 },
+    lib: { and: 0.6667, or: 1, 'or-stem': 1, 'or-stem-paradigm': 1, 'or-trigram': 1, hybrid: 1, 'hybrid-expanded': 1, 'hybrid-trigram': 1 },
+  };
+  for (const [mode, lanesWant] of Object.entries(want)) {
+    const got = lastJson(run([...base, '--stopwords', mode]).stdout).lanes;
+    for (const [lane, v] of Object.entries(lanesWant)) assert.equal(got[lane].ndcg10, v, `${mode} ${lane}`);
+  }
+});

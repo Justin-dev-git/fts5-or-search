@@ -97,6 +97,9 @@ test('scale-run.sh: subsets, id hash, one process per lane, compares, summary; r
     const again = spawnSync('bash', [p('../scripts/scale-run.sh')], { encoding: 'utf8', env: { ...process.env, ...env } });
     assert.equal(again.status, 0);
     assert.equal((again.stdout.match(/ skip /g) ?? []).length, 34, 'every finished lane (10 en + 7 de, 2 sizes) is skipped on restart');
+    const other = spawnSync('bash', [p('../scripts/scale-run.sh')], { encoding: 'utf8', env: { ...process.env, ...env, DE_STOPWORDS: 'lib' } });
+    assert.equal(other.status, 5, 'a resumed run with another stopword list stops');
+    assert.match(other.stdout, /STOP parameters differ from the first start/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -297,16 +297,20 @@ function substringCoverageRerank(rows, groups) {
 }
 
 // T21: with --stopwords lib, STOPWORDS_DE replaces the stemmer's list. The
-// stemmer lanes get the query without those words (same token rule as the
-// stemmer's queryTermVariants); its own list is a subset of STOPWORDS_DE and
-// then removes nothing more.
+// stemmer lanes get the query without those words (token rule of the
+// stemmer's queryTermVariants, leading/trailing hyphens stripped as in
+// tokenize(): "Vor-" is "vor"), and stemmer variants that are in
+// STOPWORDS_DE are dropped as well ("viele" also yields "viel", "Check-in"
+// yields "in"); a group left without variants is dropped.
 const dropStopwords = (q, sw) => q.toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, ' ').split(/\s+/)
-  .filter((w) => w && !sw.has(w)).join(' ');
+  .map((w) => w.replace(/^-+/, '').replace(/-+$/, '')).filter((w) => w && !sw.has(w)).join(' ');
 
 async function lanesForDe(corpusPath, stem, dbOpts, stopwords = 'stemmer') {
   const sw = stopwords === 'lib' ? STOPWORDS_DE : stem.STOPWORDS;
   const de = { stopwords: sw };
-  const sq = stopwords === 'lib' ? (q) => dropStopwords(q, sw) : (q) => q;
+  const variants = stopwords === 'lib'
+    ? (q, o) => stem.queryTermVariants(dropStopwords(q, sw), o).map((g) => g.filter((v) => !sw.has(v))).filter((g) => g.length)
+    : (q, o) => stem.queryTermVariants(q, o);
   const prep = (db) => {
     const stmt = db.prepare('SELECT rowid AS rid, id, content, rank FROM docs WHERE docs MATCH ? ORDER BY rank LIMIT ?');
     return (match, limit = K) => stmt.all(match, limit);
@@ -316,7 +320,7 @@ async function lanesForDe(corpusPath, stem, dbOpts, stopwords = 'stemmer') {
   const search = prep(dbUni);
   const searchTri = prep(dbTri);
   const stemMatch = (q, paradigm) => {
-    const vs = [...new Set(stem.queryTermVariants(sq(q), { paradigm }).flat())];
+    const vs = [...new Set(variants(q, { paradigm }).flat())];
     return vs.length ? `(${vs.map(quoteTerm).join(' OR ')})` : '""';
   };
   return {
@@ -334,7 +338,7 @@ async function lanesForDe(corpusPath, stem, dbOpts, stopwords = 'stemmer') {
       // stemmer-expanded OR pool (match string built like the original:
       // groups ORed, duplicates kept) + variant-coverage re-rank
       'hybrid-expanded': (q) => {
-        const groups = stem.queryTermVariants(sq(q));
+        const groups = variants(q);
         if (!groups.length) return [];
         const orM = groups.map((u) => `(${u.map(quoteTerm).join(' OR ')})`).join(' OR ');
         return substringCoverageRerank(search(orM, SUBSTR_RERANK_POOL), groups);

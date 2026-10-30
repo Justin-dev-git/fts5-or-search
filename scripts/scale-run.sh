@@ -17,7 +17,8 @@
 # the parameters chosen then), FULL_EN_LANES / FULL_DE_LANES (lanes for the
 # whole corpus; default: the same lists), DE_STOPWORDS (stemmer = the stemmer's
 # list as in T16-T19, lib = STOPWORDS_DE; beir-bench --stopwords, T21).
-# Exit codes: 0 done, 2 id hashes differ, 3 disk full, 4 a lane failed.
+# Exit codes: 0 done, 2 id hashes differ, 3 disk full, 4 a lane failed,
+# 5 parameters differ from the first start in this SCALE_DIR (results/params).
 set -uo pipefail
 : "${SCALE_DIR:?set SCALE_DIR}" "${STEMMER:?set STEMMER}"
 REPO=$(cd "$(dirname "$0")/.." && pwd)
@@ -42,6 +43,14 @@ free_gb() { df -BG --output=avail "$SCALE_DIR" | tail -1 | tr -dc 0-9; }
 idhash() {
   node -e "const rl=require('readline').createInterface({input:require('fs').createReadStream(process.argv[1])});const h=require('crypto').createHash('sha256');rl.on('line',l=>{if(l.trim())h.update(JSON.parse(l)._id+'\n')});rl.on('close',()=>console.log(h.digest('hex')))" "$1"
 }
+
+# A resumed run must measure with the parameters of the first start, or the
+# summary would mix them (e.g. two stopword lists).
+PARAMS="queries=$QUERIES repeat=$REPEAT full_queries=$FULL_QUERIES full_repeat=$FULL_REPEAT de_stopwords=$DE_STOPWORDS"
+if [ -f "$RES/params" ] && [ "$(cat "$RES/params")" != "$PARAMS" ]; then
+  log "STOP parameters differ from the first start: $(cat "$RES/params") (now: $PARAMS)"; exit 5
+fi
+echo "$PARAMS" > "$RES/params"
 
 labels="$SIZES"
 [ "$FULL" = 1 ] && labels="$labels all"
