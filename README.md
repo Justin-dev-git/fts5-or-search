@@ -17,9 +17,95 @@ FTS5's built-in BM25 (`ORDER BY rank`) fixes that.
   above OR.
 - **Scale:** latency and index size grow about linearly with the corpus. At
   1 000 000 passages the OR lane had a p95 of 118.78 ms (English) and
-  24.72 ms (German).
+  24.72 ms (German), on the full 8 841 823 passages 1 027.75 ms (English).
 
 The measurements are in `docs/VALIDATION.md` and summarized below.
+
+## Introduction
+
+SQLite's full-text extension FTS5 is often all the search a small
+application needs: it ships with SQLite, runs in-process and ranks with
+BM25. The usual way to turn a sentence into an FTS5 query is to join its
+words with AND. For natural-language questions that fails: a relevant
+document rarely contains every word of the question. On SciFact strict AND
+reaches 0.0616 nDCG@10, plain OR 0.6878.
+
+This matters in particular for AI agents that search their own memory. The
+assistant framework OpenClaw (version 2026.10.7) combines vector search with
+an FTS5 keyword search for its memory, and the context-management plugin
+lossless-claw (1.1.1) searches the compacted conversation history with
+FTS5; both join the query words with AND. Agents phrase memory requests as
+sentences (a median of 7 words on the installation we looked at), so the
+keyword half rarely finds anything — see the case study below.
+
+This project asks a narrow question: **what is the simplest FTS5 query that
+works for natural-language search, and does anything more complex beat
+it?** The reference is the plainest alternative: every word quoted and
+joined with OR, ranked by FTS5's built-in BM25. Every extension we tried —
+coverage re-ranking, score blends, title weights, a German stemmer, a
+trigram index, adaptive expansion, prefix queries — had to beat this
+reference on data it was not tuned on, at little cost in latency and code.
+The adoption criterion is called E5 and is defined in `docs/ZIEL.md`.
+Neural models, embeddings and re-rankers are out of scope on purpose: the
+point is what plain SQLite can do.
+
+The tests use public benchmarks — four English BEIR datasets; the German
+GermanDPR, GovService, WebFAQ and GerDaLIR; MS MARCO and its German
+translation mMARCO from 10 000 up to 8.8 million passages — and measure
+latency and index size as the corpus grows. Every number in this README is
+taken from `docs/VALIDATION.md`, which records commands, checksums,
+per-query comparisons and confidence intervals.
+
+## How to read the results
+
+**Method, in five steps.**
+
+1. **Data.** Public test collections with relevance judgments: queries, the
+   documents and, per query, which documents are relevant.
+2. **Lanes.** Each search variant is a *lane* (`or`, `and`, `or-trigram`, …).
+   All lanes of a comparison run in the same process on the same index and
+   the same queries (`scripts/beir-bench.mjs`).
+3. **Metrics.** Ranking quality and latency per lane (glossary below).
+4. **Decision.** An extension replaces plain OR only if it meets E5 on every
+   dataset it was *not* tuned on; parameters are chosen on separate tuning
+   data before the test.
+5. **Confirmation and review.** Promising results are re-measured on further
+   independent data; every change is a task file in `tasks/` with its own
+   check, and the results were reviewed by a second agent.
+
+**Glossary.**
+
+- **FTS5** – SQLite's full-text search extension. A `MATCH` query finds
+  documents; `ORDER BY rank` sorts them by **BM25**, a standard relevance
+  score that weights rare words higher and penalizes long documents.
+- **AND / OR match** – `"solar" AND "panel"` requires every word, `"solar" OR
+  "panel"` any word; BM25 then ranks documents with more and rarer matching
+  words higher.
+- **Tokenizer** – how FTS5 splits text into indexed terms: `unicode61` (words,
+  diacritics folded), `porter unicode61` (English stemming: "running" →
+  "run"), `trigram` (every three-character sequence, so a word also matches
+  inside a longer word).
+- **Stopwords** – frequent function words ("the", "und", "in") left out of
+  the query.
+- **Prefix query** – `"hund"*` matches every word starting with "hund".
+- **Tuned / untuned dataset** – a dataset used to choose a parameter is
+  *tuned* for that lane; only untuned datasets count for the decision.
+- **nDCG@10** – quality of the top 10 results, 0 to 1; relevant documents
+  count more the higher they are ranked. **MRR@10** – 1 / rank of the first
+  relevant result. **P@10** – share of relevant documents among the top 10.
+  **Recall@100** – share of all relevant documents within the top 100.
+- **p50 / p95** – median and 95th-percentile latency per query, in ms.
+- **E5** – the adoption criterion: on every untuned dataset at least +0.01
+  nDCG@10 over plain OR, P@10 not worse, p95 at most 3× (or 10 ms more than)
+  plain OR, about 50 lines of library code at most; applied per **size
+  class** (small < 50 000, medium up to 500 000, large above).
+- **95 % CI** – confidence interval of a difference from a paired bootstrap
+  over the queries; if it excludes 0 the difference is unlikely to be chance.
+- **W / T / L** – number of queries where a lane is better / equal / worse.
+- **Known-item test** – a request is written for one known document; the
+  measure is whether and at which rank the search finds it.
+- **Adaptive expansion** – expand the query (stemmer variants, trigram) only
+  if the plain OR match hits at most τ documents.
 
 ## Quick start
 
@@ -212,6 +298,25 @@ subsets are easier because they keep all judged passages (other questions, too).
 Full provenance — download commands, checksums, licenses, per-query
 compares — in [docs/VALIDATION.md](docs/VALIDATION.md).
 
+## Case study: OpenClaw memory and context
+
+On one private OpenClaw installation (only aggregate numbers; details in
+`docs/VALIDATION.md`, T28):
+
+- **What the code does.** The memory search scores 0.7 × vector similarity +
+  0.3 × FTS5 keyword score; the keyword half joins the words with AND, and a
+  result found only by the keyword half gets vector score 0, so it can never
+  pass the default threshold. The context search `lcm_grep` uses an implicit
+  AND in full-text mode.
+- **Usage.** 14 distinct memory requests, median 7 words; the AND keyword
+  match found nothing for 10 of them, quoted OR with `STOPWORDS_DE` for none.
+- **Local patch (OR + `STOPWORDS_DE`).** Known-item requests (100): MRR@6
+  0.274 → 0.357 (+0.083, 95 % CI [+0.033, +0.135]). Real requests (34,
+  blind-judged by LLMs): nDCG@6 0.767 → 0.800, not significant — the vector
+  half already carries most of the ranking. `lcm_grep` sorted by relevance:
+  nDCG@10 0.557 → 0.748 (33 cases) and 0.727 → 0.897 (8 cases).
+- **Limits.** One installation; LLM-written and LLM-judged test material.
+
 ## Other exports
 
 `STOPWORDS_DE` (259 words, T21) is the German stopword list for `tokenize`,
@@ -267,12 +372,53 @@ the German stopword list that T21 closed. Development happened in a private
 repository (`fts5-hybrid-search`); this repository starts from its 0.2.0
 state, with all task files and measurements included.
 
-## Limitations
+## Conclusion
+
+**What holds.**
+
+- Quoted OR with FTS5's BM25 beats strict AND on every dataset and at every
+  size: SciFact 0.6878 vs. 0.0616, mMARCO-de with 1 000 000 passages 0.3493
+  vs. 0.1508, WebFAQ-de with 891 201 answers 0.4665 vs. 0.1332, and on the full
+  8 841 823 passages 0.2254 vs. 0.0947 (English) and 0.1367 vs. 0.0718
+  (German) nDCG@10. There its MRR@10 is close to published BM25 (0.1797 vs.
+  0.184 English, 0.1105 vs. 0.136 German). It needs no tuning, no second index
+  and no dependency.
+- Its cost grows linearly with the corpus: for `ORDER BY rank` FTS5 scores
+  every document that contains a query word. The English p95 was 118.78 ms at
+  1 000 000 and 1 027.75 ms at 8 841 823 passages.
+- German needs a complete stopword list: with it the p95 at 1 000 000
+  passages fell from 266.96 to 24.72 ms, at no loss in quality.
+
+**What did not hold.**
+
+- Re-ranking by term coverage, BM25/coverage blends and title weights were
+  never better than OR on untuned data, also at 1 000 000 passages.
+- A query-side German stemmer helped on machine-translated mMARCO only when
+  applied adaptively; on native German (WebFAQ) it lost −0.0174 and −0.0231
+  nDCG@10 when always applied, and the adaptive variant gained at most
+  +0.0031.
+
+**The trade-off that remains: sub-word matching in German.** On native
+German, matching inside words — inflected forms and compounds, „Hund" in
+„Hundehalter" — is what helps: a trigram index gained +0.0304 and +0.0239
+nDCG@10 on WebFAQ-de (100 000 and 891 201 answers), but at about three times
+the index size and six to seven times the p95 latency.
+<!-- T26: prefix queries – fill in after the test -->
+
+**Recommendation.**
+
+- English: OR on a `porter unicode61` index.
+- German: OR on a `unicode61` index with `STOPWORDS_DE`; a trigram index
+  where quality matters more than index size and latency.
+<!-- T26: prefix recommendation -->
+
+**Limits and open questions.**
 
 - Measured for English (Porter) and German (`unicode61`, trigram) only.
-- German: two small native datasets (2 876 and 105 documents) and mMARCO-de,
-  a machine translation with about one judged passage per question.
-- Corpora above 1 000 000 passages are not measured.
+- German native test sets are small or narrow (GermanDPR 2 876, GovService 105,
+  GerDaLIRSmall 9 969 documents) apart from WebFAQ-de (891 201 answers);
+  mMARCO-de is a machine translation with about one judged passage per question.
+- At full size only `and` and `or` were measured.
 - With 1 000 questions and about one judged passage each, differences below
   about ±0.016 nDCG@10 at 100 000 and 1 000 000 passages lie within the 95 %
   interval (T24); size-class results near the +0.01 threshold are uncertain.

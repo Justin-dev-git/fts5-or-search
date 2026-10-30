@@ -2554,3 +2554,57 @@ uses its fixed defaults k1 = 1.2, b = 0.75.
 - nDCG@10 at full size is lower than on the subsets (English `or` 0.5497 at
   1 000 000): the subsets keep all judged passages and add fewer distractors;
   they also use other questions (1 000 vs. 6 980).
+
+## T28 – Case study: FTS5 in OpenClaw memory and context search (aggregate numbers)
+
+Setting: one private OpenClaw installation (OpenClaw 2026.10.7, plugin
+lossless-claw 1.1.1, local model Qwen3.8-Flash-Next via vLLM). Only aggregate
+numbers are reported; no queries, documents or conversation content.
+
+### What the code does (read from the installed versions)
+
+- Memory search (`memory-core`): hybrid score 0.7 × vector similarity
+  (embeddinggemma-300m) + 0.3 × FTS5 keyword score; the keyword half joins the
+  query terms with AND on a `unicode61` index. A candidate found only by the
+  keyword half gets vector score 0 and therefore cannot reach the default
+  `minScore` of 0.35. Results: top 6 (MMR, temporal decay).
+- Context search (`lcm_grep` of lossless-claw): `full_text` mode is an FTS5
+  match with implicit AND (plus German stemmer variants on this installation);
+  the default mode is `regex`, the default sort `recency`.
+
+### Usage
+
+- 14 distinct `memory_search` requests over ten days, median 7 words (4 to 13).
+- The production keyword match (AND) found nothing for 10 of the 14; quoted OR
+  with `STOPWORDS_DE` found something for all 14 (median 602 of 2 728 chunks).
+
+### Local patch and measurements
+
+The patch replaces the keyword match of the memory search with quoted OR plus
+`STOPWORDS_DE` (vector half unchanged) and, in `lcm_grep`, uses OR when the
+results are sorted by relevance. Judgments were made blind by LLM judges
+(grades 0/1/2 on pooled candidates), not by people.
+
+| test | metric | AND (production) | OR (patch) | difference [95 % CI] |
+|---|---|---:|---:|---|
+| 34 real requests (14 `memory_search` calls + 20 recall questions), memory | nDCG@6 | 0.767 | 0.800 | +0.033 [−0.024, +0.093], W/T/L 16/7/11 |
+| 100 known-item requests (60 memory, 40 session), memory | MRR@6 | 0.274 | 0.357 | +0.083 [+0.033, +0.135], W/T/L 28/66/6 |
+| 100 known-item requests, memory | hit@6 | 51/100 | 56/100 | |
+| 33 recall cases, `lcm_grep` full text | nDCG@10 | 0.557 (recency) / 0.576 (relevance) | 0.748 (relevance) | |
+| 8 recall cases (lcm-bench), `lcm_grep` full text | nDCG@10 | 0.727 | 0.897 | |
+
+Known-item requests were written by an LLM for one chosen document each; the
+measure is the rank of that document. The `lcm_grep` cases take relevance from
+regular-expression truth sets.
+
+### Facts
+
+- On real requests the patch is not significantly better (the vector half already
+  carries most of the ranking: vector alone 0.781). It helps when one specific
+  item is wanted (known-item MRR +0.083, interval excludes zero).
+- A second stage that scores keyword-only candidates with their real vector
+  similarity, fuses both lists (RRF) or uses a trigram keyword index reached
+  known-item MRR@6 0.370–0.386, but on the 34 real requests it differed from the
+  patch by −0.010 to +0.004 nDCG@6 (intervals include zero) and was not adopted.
+- Limits: one installation, LLM-written and LLM-judged test material, few real
+  requests.
