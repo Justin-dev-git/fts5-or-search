@@ -192,21 +192,22 @@ and 0.6132, 200-query subsets).
 MS MARCO passages (English, `porter unicode61`) and the same passages in
 mMARCO-de (`unicode61`, `STOPWORDS_DE`), 1 000 dev questions, `or` lane:
 
-| | 100 000 passages | 1 000 000 passages |
-|---|---:|---:|
-| English nDCG@10 | 0.7705 | 0.5497 |
-| English p50 / p95 ms | 3.77 / 9.43 | 44.66 / 118.78 |
-| English index MB | 59.08 | 590.23 |
-| German nDCG@10 | 0.4948 | 0.3493 |
-| German p50 / p95 ms | 0.74 / 2.24 | 6.43 / 24.72 |
-| German index MB | 67.47 | 663.22 |
+| | 100 000 passages | 1 000 000 passages | 8 841 823 passages (all 6 980 questions) |
+|---|---:|---:|---:|
+| English nDCG@10 | 0.7705 | 0.5497 | 0.2254 |
+| English p50 / p95 ms | 3.77 / 9.43 | 44.66 / 118.78 | 393.13 / 1 027.75 |
+| English index MB | 59.08 | 590.23 | 5 254.55 |
+| German nDCG@10 | 0.4948 | 0.3493 | 0.1367 |
+| German p50 / p95 ms | 0.74 / 2.24 | 6.43 / 24.72 | 104.67 / 350.35 (loaded machine) |
+| German index MB | 67.47 | 663.22 | 5 839.24 |
 
 Latency and index size grow about linearly: for `ORDER BY rank`, FTS5
 computes BM25 for every document that contains at least one query term
 before `LIMIT` takes the top results. Strict AND stays faster (English p50
 0.81 ms at 1 000 000 passages) but finds much less: nDCG@10 0.1709 (English)
-and 0.1508 (German). The full corpus (8.8 million passages) is not measured
-yet.
+and 0.1508 (German). At full size (T20) `or` reaches MRR@10 0.1797 (English)
+and 0.1105 (German) against the published BM25 values 0.184 and 0.136; the
+subsets are easier because they keep all judged passages (other questions, too).
 
 Full provenance — download commands, checksums, licenses, per-query
 compares — in [docs/VALIDATION.md](docs/VALIDATION.md).

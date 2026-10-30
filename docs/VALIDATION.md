@@ -2475,3 +2475,82 @@ E5 per lane against `or` of the same run (paired bootstrap, 4 000 resamples). `o
 - `or-trigram` gains on WebFAQ-de (+0.0304 and +0.0239, intervals exclude
   zero) but fails the latency budget (p95 36.13 vs. 5.39 ms and 295.40 vs.
   50.97 ms) and is neutral on GerDaLIRSmall at a p95 of 6 191 ms.
+
+
+## T20 – Full size (MS MARCO / mMARCO)
+
+Question: how fast are `and` and `or` on the full corpus (8 841 823 passages),
+and is `or` close to the published BM25 values on the same 6 980 dev-small
+questions?
+
+Machine: `nproc` 20, 121 GiB memory shared by CPU and GPU. English ran with the
+local LLM unloaded so the indexes fit into the page cache (18:19–19:16); in
+parallel ran a German `or-trigram` attempt (see below) and an unrelated
+benchmark on other cores. The German `and`/`or` run (21:49–22:05) reused the
+German index while the LLM was loaded and other benchmarks used other cores, so
+its latencies are from a loaded machine and are not comparable to the clean
+1 000 000-passage runs. Data: `beir/en-full` (T19) and `beir/de-full` (T21),
+`docs=8841823 queries=6980 qrels=7437`; identical passage ids in both languages
+(sha256 of the id list `1edbcd67108af5b219dbe823ca9c484cc98b5e1f475569cbfca7530c80af8c28`).
+
+Commands (English at commit `c398b8723ba789b310b5868544f1da564aadf581`, German at
+`5aad34f7ecc6d3507e5540629479a2267537d7e2`; the bench differs only by lanes not used here):
+
+```
+taskset -c 17 node scripts/beir-bench.mjs --data "$SCALE_DIR/beir/en-full" --lanes and,or --db-dir "$SCALE_DIR/t20/db-en" --report-db --repeat 1 --per-query "$SCALE_DIR/t20/en.pq.jsonl" --json
+taskset -c 19 node scripts/beir-bench.mjs --data "$SCALE_DIR/beir/de-full" --lang de --stemmer "$STEMMER" --stopwords lib --lanes and,or --db-dir "$SCALE_DIR/t20/db-de" --reuse-db --report-db --repeat 1 --per-query "$SCALE_DIR/t20/de.pq.jsonl" --json
+```
+
+English:
+
+```
+dataset=en-full docs=8841823 queries=6980 repeat=1
+lane  ndcg@10  mrr@10  recall@100  p@10    p50ms   p95ms
+and   0.0947   0.0822  0.1647      0.0144  14.27   61.09
+or    0.2254   0.1797  0.6652      0.0396  393.13  1027.75
+index en-full-porter-unicode61: build 109.2 s, size 5254.55 MB
+```
+
+German:
+
+```
+dataset=de-full docs=8841823 queries=6980 repeat=1
+lane  ndcg@10  mrr@10  recall@100  p@10    p50ms   p95ms
+and   0.0718   0.0620  0.1415      0.0110  3.44    22.14
+or    0.1367   0.1105  0.4100      0.0237  104.67  350.35
+db size MB: unicode61=5839.24 trigram=17218.82
+index de-full-unicode61: build 131.2 s (earlier run, reused), size 5839.24 MB
+index de-full-trigram: build 564.9 s (earlier run, reused), size 17218.82 MB
+```
+
+The German `or-trigram` lane of the task was started (index built: 564.9 s,
+17 218.82 MB) and stopped on the owner's decision after more than an hour of
+querying; at 1 000 000 passages it already missed E5 on latency (T21/T22).
+
+### Comparison with published BM25 (mMARCO, Bonifacio et al. 2021, Pyserini)
+
+| | published BM25 MRR@10 | `or` MRR@10 | difference |
+|---|---:|---:|---:|
+| English | 0.184 | 0.1797 | −0.0043 |
+| German | 0.136 | 0.1105 | −0.0255 |
+
+Both are within the task's tolerance of 0.05. A plausible reason for the larger
+German gap (not verified here) is that the reference uses a German analyzer with
+stemming, while `or` runs on `unicode61` without stemming; FTS5 `bm25()` also
+uses its fixed defaults k1 = 1.2, b = 0.75.
+
+### Facts
+
+- `or` beats `and` at full size in both languages: nDCG@10 0.2254 vs. 0.0947
+  (English) and 0.1367 vs. 0.0718 (German).
+- Growth from 1 000 000 (T19/T21, 1 000 questions) to 8 841 823 passages
+  (×8.84): English `or` p50 44.66 → 393.13 ms (×8.80), p95 118.78 → 1 027.75 ms
+  (×8.65), index 590.23 → 5 254.55 MB (×8.90). German index `unicode61`
+  663.22 → 5 839.24 MB (×8.80), `trigram` 1 942.40 → 17 218.82 MB (×8.86).
+  German `or` p50 6.43 → 104.67 ms and p95 24.72 → 350.35 ms were measured on
+  the loaded machine and overstate the growth.
+- English latency and every index grow linearly with the corpus, as expected
+  from FTS5 scoring every document that contains a query term.
+- nDCG@10 at full size is lower than on the subsets (English `or` 0.5497 at
+  1 000 000): the subsets keep all judged passages and add fewer distractors;
+  they also use other questions (1 000 vs. 6 980).
