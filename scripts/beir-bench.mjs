@@ -22,6 +22,10 @@
 //           build missing ones; refuse a .db without marker (aborted build).
 //   --report-db  also report build time and database size per index
 //           (text line + JSON fields buildMs/dbBytes).
+//   --stopwords stemmer|lib  German only (T21): stopword list for every
+//           German lane. `stemmer` (default) is the stemmer's STOPWORDS, as in
+//           T16-T19; `lib` is STOPWORDS_DE from lib/or-search.mjs (JSON field
+//           stopwords: "lib").
 //   --json  additionally prints one JSON line as the LAST output line:
 //           { dataset, docs, queries, lanes: { <lane>:
 //             { ndcg10, mrr10, recall100, p50ms, p95ms } } }
@@ -35,7 +39,7 @@ import { pathToFileURL } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { performance } from 'node:perf_hooks';
 import {
-  sanitizeMatch, buildOrMatch, hybridSearch, makeFtsTermPresent, tokenize,
+  sanitizeMatch, buildOrMatch, hybridSearch, makeFtsTermPresent, tokenize, STOPWORDS_DE,
 } from '../lib/or-search.mjs';
 import { evaluate, ndcgAtK, precisionAtK } from './metrics.mjs';
 
@@ -46,7 +50,7 @@ const BLEND_LAMBDAS = { blend: [0, 0.1, 0.2, 0.5], blendidf: [0.1, 0.2, 0.5] };
 function parseArgs(argv) {
   const out = {
     data: null, repeat: 3, json: false, perQuery: null, lanes: null, titleWeights: null,
-    lang: 'en', stemmer: null, dbDir: null, reportDb: false, reuseDb: false,
+    lang: 'en', stemmer: null, dbDir: null, reportDb: false, reuseDb: false, stopwords: null,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -60,6 +64,7 @@ function parseArgs(argv) {
     else if (a === '--db-dir') out.dbDir = argv[++i];
     else if (a === '--report-db') out.reportDb = true;
     else if (a === '--reuse-db') out.reuseDb = true;
+    else if (a === '--stopwords') out.stopwords = argv[++i];
     else if (a === '--title-weights') {
       out.titleWeights = argv[++i].split(',').filter(Boolean).map((s) => {
         const w = Number(s);
@@ -73,6 +78,10 @@ function parseArgs(argv) {
   if (!['en', 'de'].includes(out.lang)) throw new Error(`beir-bench: --lang must be en or de, got ${out.lang}`);
   if (out.lang === 'de' && !out.stemmer) throw new Error('beir-bench: --lang de needs --stemmer <path/to/stem-german.mjs>');
   if (out.lang === 'de' && out.titleWeights) throw new Error('beir-bench: --title-weights is English-only');
+  if (out.stopwords !== null) {
+    if (out.lang !== 'de') throw new Error('beir-bench: --stopwords is German-only');
+    if (!['stemmer', 'lib'].includes(out.stopwords)) throw new Error(`beir-bench: --stopwords must be stemmer or lib, got ${out.stopwords}`);
+  }
   if (out.dbDir && !(existsSync(out.dbDir) && statSync(out.dbDir).isDirectory())) {
     throw new Error(`beir-bench: --db-dir must be an existing directory: ${out.dbDir}`);
   }
@@ -287,8 +296,17 @@ function substringCoverageRerank(rows, groups) {
     .map((x) => x.r);
 }
 
-async function lanesForDe(corpusPath, stem, dbOpts) {
-  const de = { stopwords: stem.STOPWORDS };
+// T21: with --stopwords lib, STOPWORDS_DE replaces the stemmer's list. The
+// stemmer lanes get the query without those words (same token rule as the
+// stemmer's queryTermVariants); its own list is a subset of STOPWORDS_DE and
+// then removes nothing more.
+const dropStopwords = (q, sw) => q.toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, ' ').split(/\s+/)
+  .filter((w) => w && !sw.has(w)).join(' ');
+
+async function lanesForDe(corpusPath, stem, dbOpts, stopwords = 'stemmer') {
+  const sw = stopwords === 'lib' ? STOPWORDS_DE : stem.STOPWORDS;
+  const de = { stopwords: sw };
+  const sq = stopwords === 'lib' ? (q) => dropStopwords(q, sw) : (q) => q;
   const prep = (db) => {
     const stmt = db.prepare('SELECT rowid AS rid, id, content, rank FROM docs WHERE docs MATCH ? ORDER BY rank LIMIT ?');
     return (match, limit = K) => stmt.all(match, limit);
@@ -298,7 +316,7 @@ async function lanesForDe(corpusPath, stem, dbOpts) {
   const search = prep(dbUni);
   const searchTri = prep(dbTri);
   const stemMatch = (q, paradigm) => {
-    const vs = [...new Set(stem.queryTermVariants(q, { paradigm }).flat())];
+    const vs = [...new Set(stem.queryTermVariants(sq(q), { paradigm }).flat())];
     return vs.length ? `(${vs.map(quoteTerm).join(' OR ')})` : '""';
   };
   return {
@@ -316,7 +334,7 @@ async function lanesForDe(corpusPath, stem, dbOpts) {
       // stemmer-expanded OR pool (match string built like the original:
       // groups ORed, duplicates kept) + variant-coverage re-rank
       'hybrid-expanded': (q) => {
-        const groups = stem.queryTermVariants(q);
+        const groups = stem.queryTermVariants(sq(q));
         if (!groups.length) return [];
         const orM = groups.map((u) => `(${u.map(quoteTerm).join(' OR ')})`).join(' OR ');
         return substringCoverageRerank(search(orM, SUBSTR_RERANK_POOL), groups);
@@ -336,7 +354,7 @@ async function lanesForDe(corpusPath, stem, dbOpts) {
 }
 
 async function run() {
-  const { data, repeat, json, perQuery, lanes: laneFilter, titleWeights, lang, stemmer, dbDir, reportDb, reuseDb } = parseArgs(process.argv.slice(2));
+  const { data, repeat, json, perQuery, lanes: laneFilter, titleWeights, lang, stemmer, dbDir, reportDb, reuseDb, stopwords } = parseArgs(process.argv.slice(2));
   const corpusPath = join(data, 'corpus.jsonl');
   const dbOpts = { dbDir, prefix: basename(resolve(data)), reuse: reuseDb };
   const queries = new Map(readJsonl(join(data, 'queries.jsonl')).map((q) => [String(q._id), q.text]));
@@ -352,7 +370,7 @@ async function run() {
     if (!(stem.STOPWORDS instanceof Set) || typeof stem.queryTermVariants !== 'function') {
       throw new Error('beir-bench: --stemmer module must export STOPWORDS (Set) and queryTermVariants()');
     }
-    ({ lanes, tokOpts, dbBytes, docs: docCount } = await lanesForDe(corpusPath, stem, dbOpts));
+    ({ lanes, tokOpts, dbBytes, docs: docCount } = await lanesForDe(corpusPath, stem, dbOpts, stopwords ?? 'stemmer'));
   } else {
     const { db, docs } = await loadCorpus(corpusPath, 'porter unicode61', { ...dbOpts, name: `${dbOpts.prefix}-porter-unicode61` });
     docCount = docs;
@@ -406,6 +424,7 @@ async function run() {
   if (lang === 'de') {
     out.lang = 'de';
     out.dbBytes = dbBytes;
+    if (stopwords === 'lib') out.stopwords = 'lib';
   }
   if (reportDb) {
     out.buildMs = Object.fromEntries(builtIndexes.map((x) => [x.name, +x.ms.toFixed(0)]));

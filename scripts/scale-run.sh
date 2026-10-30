@@ -15,7 +15,8 @@
 # FULL_QUERIES (300), REPEAT (2), FULL_REPEAT (1), LANE_TIMEOUT (6h), MIN_FREE_GB (20),
 # EN_LANES / DE_LANES (default: every lane that was a candidate before, at
 # the parameters chosen then), FULL_EN_LANES / FULL_DE_LANES (lanes for the
-# whole corpus; default: the same lists).
+# whole corpus; default: the same lists), DE_STOPWORDS (stemmer = the stemmer's
+# list as in T16-T19, lib = STOPWORDS_DE; beir-bench --stopwords, T21).
 # Exit codes: 0 done, 2 id hashes differ, 3 disk full, 4 a lane failed.
 set -uo pipefail
 : "${SCALE_DIR:?set SCALE_DIR}" "${STEMMER:?set STEMMER}"
@@ -32,6 +33,7 @@ EN_LANES=${EN_LANES:-"and or hybrid hybrid-fts hybrid-k10 hybrid-nofloor-k10 hyb
 DE_LANES=${DE_LANES:-"and or or-stem or-trigram hybrid hybrid-expanded hybrid-trigram"}
 FULL_EN_LANES=${FULL_EN_LANES:-$EN_LANES}
 FULL_DE_LANES=${FULL_DE_LANES:-$DE_LANES}
+DE_STOPWORDS=${DE_STOPWORDS:-stemmer}
 RES="$SCALE_DIR/results"
 mkdir -p "$RES" "$SCALE_DIR/db"
 
@@ -45,7 +47,7 @@ labels="$SIZES"
 [ "$FULL" = 1 ] && labels="$labels all"
 log "start sizes=[$labels] queries=$QUERIES full_queries=$FULL_QUERIES repeat=$REPEAT full_repeat=$FULL_REPEAT timeout=$LANE_TIMEOUT"
 log "en lanes: $EN_LANES"
-log "de lanes: $DE_LANES"
+log "de lanes: $DE_LANES (stopwords: $DE_STOPWORDS)"
 [ "$FULL" = 1 ] && log "full-size lanes: en [$FULL_EN_LANES] de [$FULL_DE_LANES]"
 
 for N in $labels; do
@@ -68,7 +70,7 @@ for N in $labels; do
   for L in en de; do
     db="$SCALE_DIR/db/$L-$N"
     mkdir -p "$db"
-    if [ "$L" = en ]; then lanes=$EN_LANES; full=$FULL_EN_LANES; langargs=(); else lanes=$DE_LANES; full=$FULL_DE_LANES; langargs=(--lang de --stemmer "$STEMMER"); fi
+    if [ "$L" = en ]; then lanes=$EN_LANES; full=$FULL_EN_LANES; langargs=(); else lanes=$DE_LANES; full=$FULL_DE_LANES; langargs=(--lang de --stemmer "$STEMMER" --stopwords "$DE_STOPWORDS"); fi
     [ "$N" = all ] && lanes=$full
     for lane in $lanes; do
       res="$RES/$L-$N.$lane.txt"
