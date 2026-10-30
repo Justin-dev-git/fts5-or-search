@@ -17,6 +17,7 @@ Erlaubte Dateien:
 - test/adaptive.test.mjs
 - test/fixtures/beir-de-adaptive/
 - docs/VALIDATION.md
+- docs/ZIEL.md
 - README.md
 - CHANGELOG.md
 
