@@ -315,6 +315,9 @@ On one private OpenClaw installation (only aggregate numbers; details in
   blind-judged by LLMs): nDCG@6 0.767 → 0.800, not significant — the vector
   half already carries most of the ranking. `lcm_grep` sorted by relevance:
   nDCG@10 0.557 → 0.748 (33 cases) and 0.727 → 0.897 (8 cases).
+- **Prefix queries (T26) do not transfer.** Memory known-item MRR@6 +0.015
+  (95 % CI [−0.025, +0.054]); `lcm_grep` mixed (−0.0081 to +0.0384 nDCG@10);
+  not adopted.
 - **Limits.** One installation; LLM-written and LLM-judged test material.
 
 ## Other exports
@@ -402,15 +405,24 @@ state, with all task files and measurements included.
 German, matching inside words — inflected forms and compounds, „Hund" in
 „Hundehalter" — is what helps: a trigram index gained +0.0304 and +0.0239
 nDCG@10 on WebFAQ-de (100 000 and 891 201 answers), but at about three times
-the index size and six to seven times the p95 latency.
-<!-- T26: prefix queries – fill in after the test -->
+the index size and six to seven times the p95 latency. Prefix queries on the
+normal index (T26: every word of at least four letters as `"wort"*`) reach most
+of this without a second index: +0.0174 to +0.0409 nDCG@10 on 5 of 6 untuned
+German test sets, as good as or better than trigram on mMARCO-de and WebFAQ-de,
+at 1.2 to 3 times the p95 of OR. They do not help on paragraph-length questions
+(GerDaLIRSmall +0.0003), cannot find compounds that end with the query word
+(„Ausweis" in „Personalausweis") and did not help in the OpenClaw case study.
 
 **Recommendation.**
 
 - English: OR on a `porter unicode61` index.
 - German: OR on a `unicode61` index with `STOPWORDS_DE`; a trigram index
   where quality matters more than index size and latency.
-<!-- T26: prefix recommendation -->
+- Measured option for German corpora of 50 000 documents or more (T26: the
+  medium and large classes hold on every untuned test set): the same OR match
+  with prefix queries for words of at least four letters, on the same
+  `unicode61` index. It is not yet a library function and therefore not yet the
+  recommendation; below 50 000 documents it did not hold on every test set.
 
 **Limits and open questions.**
 

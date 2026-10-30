@@ -2808,3 +2808,26 @@ regular-expression truth sets.
   patch by −0.010 to +0.004 nDCG@6 (intervals include zero) and was not adopted.
 - Limits: one installation, LLM-written and LLM-judged test material, few real
   requests.
+
+### Transfer of the T26 prefix queries
+
+Same test material, words of at least 4 letters as prefix queries (as
+`or-prefix-4` in T26), each compared with its own baseline in the same run. The
+`lcm_grep` runs are from a later run than the table above: the database had
+grown in between, which changes the regular-expression truth sets, so absolute
+values differ from the table (for example AND, 8 cases: 0.7013 vs. 0.7267).
+
+| test | metric | without prefix | with prefix-4 | difference [95 % CI] |
+|---|---|---:|---:|---|
+| 100 known-item requests, memory (hybrid, OR) | MRR@6 | 0.357 | 0.372 | +0.015 [−0.025, +0.054], W/T/L 15/78/7 |
+| 100 known-item requests, memory (keyword half alone, OR) | MRR@6 | 0.432 | 0.421 | −0.011 [−0.068, +0.046], W/T/L 16/65/19 |
+| 33 recall cases, `lcm_grep` OR, relevance | nDCG@10 | 0.7670 | 0.7630 | −0.0040 |
+| 33 recall cases, `lcm_grep` OR + stemmer, relevance | nDCG@10 | 0.7586 | 0.7505 | −0.0081 |
+| 8 recall cases, `lcm_grep` OR, relevance | nDCG@10 | 0.8394 | 0.8314 | −0.0080 |
+| 8 recall cases, `lcm_grep` OR + stemmer, relevance | nDCG@10 | 0.8760 | 0.9144 | +0.0384 |
+
+- Unlike on the T26 benchmark sets, prefix queries do not help here: the memory
+  intervals include zero, and `lcm_grep` is mixed (three of four slightly worse).
+  A possible reason (not measured): chat memory and conversation history are
+  short and informal and are already searched with OR. The prefix lane was not
+  adopted in the installation.
