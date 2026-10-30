@@ -5,6 +5,14 @@ Behavior changes to public functions are marked **Behavior change**.
 
 ## Unreleased
 
+### Changed: E5 per size class, German recommendation for small corpora (T23, docs only)
+- E5 is applied per size class: small below 50 000 documents, medium 50 000
+  to 500 000, large above. Re-assessed on the existing measurements.
+- German below 50 000 documents: OR on a `trigram remove_diacritics 1` index
+  with `STOPWORDS_DE` (+0.0255 to +0.0543 nDCG@10 on three small test sets),
+  provisional until a further small test set confirms it. From 50 000
+  documents on and for English in every class: unchanged.
+
 ### Changed: E5 latency criterion with a 10 ms floor (T22, docs only)
 - The latency part of E5 is now "p95 at most 3× that of `or` or at most
   10 ms more, whichever is larger, same run". The ratio alone let
