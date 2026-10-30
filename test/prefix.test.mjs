@@ -40,3 +40,15 @@ test('--prefix-min: German only, positive integers; no prefix lanes without the 
   assert.match(run(['--data', data, '--prefix-min', '4', '--repeat', '1']).stderr, /--prefix-min is German-only/);
   assert.match(run([...base, '--prefix-min', '0']).stderr, /--prefix-min needs positive integers/);
 });
+
+test('--fts-prefix (T31): prefix index changes no ranking, is reported in the JSON, validated and German only', () => {
+  const base = ['--data', data, '--lang', 'de', '--stemmer', stub, '--stopwords', 'lib', '--prefix-min', '4', '--lanes', 'or,or-prefix-4', '--repeat', '1', '--json'];
+  const plain = lastJson(run(base).stdout);
+  const idx = lastJson(run([...base, '--fts-prefix', '4 5']).stdout);
+  for (const lane of ['or', 'or-prefix-4']) assert.equal(idx.lanes[lane].ndcg10, plain.lanes[lane].ndcg10, lane);
+  assert.equal(idx.ftsPrefix, '4 5');
+  assert.equal(plain.ftsPrefix, undefined);
+  assert.match(run([...base, '--fts-prefix', '4,5']).stderr, /--fts-prefix needs positive integers/);
+  assert.match(run(['--data', data, '--fts-prefix', '4', '--repeat', '1']).stderr, /--fts-prefix is German-only/);
+});
+

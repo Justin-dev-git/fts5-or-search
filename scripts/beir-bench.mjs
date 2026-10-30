@@ -32,6 +32,9 @@
 //           hybrid-expanded, every other query plain `or`. T25: also
 //           adaptive-search-<n>, the library's adaptiveSearch with the stemmer
 //           as expansion (returns 10 rows: only the @10 metrics are comparable).
+//   --fts-prefix '<n m ...>'  German only (T31): build the unicode61 index with
+//           FTS5 prefix='<n m ...>' (prefix indexes for prefix queries of exactly
+//           those lengths); index name and reuse marker carry the value.
 //   --prefix-min <n,...>  German only (T26): add the lanes or-prefix-<n>: the
 //           `or` match on unicode61 with every word of at least n letters as an
 //           FTS5 prefix query ("hund"* also finds "hundehalter", "hunde").
@@ -59,7 +62,7 @@ const BLEND_LAMBDAS = { blend: [0, 0.1, 0.2, 0.5], blendidf: [0.1, 0.2, 0.5] };
 function parseArgs(argv) {
   const out = {
     data: null, repeat: 3, json: false, perQuery: null, lanes: null, titleWeights: null,
-    lang: 'en', stemmer: null, dbDir: null, reportDb: false, reuseDb: false, stopwords: null, adaptiveTau: null, prefixMin: null,
+    lang: 'en', stemmer: null, dbDir: null, reportDb: false, reuseDb: false, stopwords: null, adaptiveTau: null, prefixMin: null, ftsPrefix: null,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -74,6 +77,10 @@ function parseArgs(argv) {
     else if (a === '--report-db') out.reportDb = true;
     else if (a === '--reuse-db') out.reuseDb = true;
     else if (a === '--stopwords') out.stopwords = argv[++i];
+    else if (a === '--fts-prefix') {
+      out.ftsPrefix = argv[++i];
+      if (!/^[1-9]\d*( [1-9]\d*)*$/.test(out.ftsPrefix ?? '')) throw new Error("beir-bench: --fts-prefix needs positive integers separated by spaces, e.g. '4 5 6'");
+    }
     else if (a === '--prefix-min') {
       out.prefixMin = argv[++i].split(',').filter(Boolean).map(Number);
       if (!out.prefixMin.length || !out.prefixMin.every((n) => Number.isInteger(n) && n >= 1)) {
@@ -105,6 +112,7 @@ function parseArgs(argv) {
   }
   if (out.adaptiveTau && out.lang !== 'de') throw new Error('beir-bench: --adaptive-tau is German-only');
   if (out.prefixMin && out.lang !== 'de') throw new Error('beir-bench: --prefix-min is German-only');
+  if (out.ftsPrefix && out.lang !== 'de') throw new Error('beir-bench: --fts-prefix is German-only');
   if (out.dbDir && !(existsSync(out.dbDir) && statSync(out.dbDir).isDirectory())) {
     throw new Error(`beir-bench: --db-dir must be an existing directory: ${out.dbDir}`);
   }
@@ -170,14 +178,14 @@ const dbBytesOf = (db) => db.prepare('PRAGMA page_count').get().page_count * db.
 // Every built index is recorded here for --report-db: name, ms, db.
 const builtIndexes = [];
 
-async function loadCorpus(corpusPath, tokenizer = 'porter unicode61', { dbDir = null, name = 'index', reuse = false } = {}) {
+async function loadCorpus(corpusPath, tokenizer = 'porter unicode61', { dbDir = null, name = 'index', reuse = false, ftsPrefix = null } = {}) {
   const file = dbDir ? join(dbDir, `${name}.db`) : null;
   const corpusBytes = statSync(corpusPath).size;
   if (reuse) {
     const marker = `${file}.done`;
     if (existsSync(marker)) {
       const m = JSON.parse(readFileSync(marker, 'utf8'));
-      if (m.tokenizer !== tokenizer || m.corpusBytes !== corpusBytes) {
+      if (m.tokenizer !== tokenizer || m.corpusBytes !== corpusBytes || (m.ftsPrefix ?? null) !== ftsPrefix) {
         throw new Error(`beir-bench: ${file} was built with another tokenizer or corpus; remove it`);
       }
       const db = new DatabaseSync(file);
@@ -188,7 +196,7 @@ async function loadCorpus(corpusPath, tokenizer = 'porter unicode61', { dbDir = 
   }
   const t0 = performance.now();
   const db = openDb(dbDir, name);
-  db.exec(`CREATE VIRTUAL TABLE docs USING fts5(id UNINDEXED, content, tokenize='${tokenizer}')`);
+  db.exec(`CREATE VIRTUAL TABLE docs USING fts5(id UNINDEXED, content, tokenize='${tokenizer}'${ftsPrefix ? `, prefix='${ftsPrefix}'` : ''})`);
   const ins = db.prepare('INSERT INTO docs (id, content) VALUES (?, ?)');
   let docs = 0;
   db.exec('BEGIN');
@@ -198,7 +206,7 @@ async function loadCorpus(corpusPath, tokenizer = 'porter unicode61', { dbDir = 
   }
   db.exec('COMMIT');
   const ms = performance.now() - t0;
-  if (file) writeFileSync(`${file}.done`, JSON.stringify({ tokenizer, docs, buildMs: Math.round(ms), corpusBytes }) + '\n');
+  if (file) writeFileSync(`${file}.done`, JSON.stringify({ tokenizer, ...(ftsPrefix ? { ftsPrefix } : {}), docs, buildMs: Math.round(ms), corpusBytes }) + '\n');
   builtIndexes.push({ name, ms, db });
   return { db, docs };
 }
@@ -328,7 +336,7 @@ function substringCoverageRerank(rows, groups) {
 const dropStopwords = (q, sw) => q.toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, ' ').split(/\s+/)
   .map((w) => w.replace(/^-+/, '').replace(/-+$/, '')).filter((w) => w && !sw.has(w)).join(' ');
 
-async function lanesForDe(corpusPath, stem, dbOpts, stopwords = 'stemmer', adaptiveTau = [], prefixMin = []) {
+async function lanesForDe(corpusPath, stem, dbOpts, stopwords = 'stemmer', adaptiveTau = [], prefixMin = [], ftsPrefix = null) {
   const sw = stopwords === 'lib' ? STOPWORDS_DE : stem.STOPWORDS;
   const de = { stopwords: sw };
   const variants = stopwords === 'lib'
@@ -338,7 +346,8 @@ async function lanesForDe(corpusPath, stem, dbOpts, stopwords = 'stemmer', adapt
     const stmt = db.prepare('SELECT rowid AS rid, id, content, rank FROM docs WHERE docs MATCH ? ORDER BY rank LIMIT ?');
     return (match, limit = K) => stmt.all(match, limit);
   };
-  const { db: dbUni, docs } = await loadCorpus(corpusPath, 'unicode61', { ...dbOpts, name: `${dbOpts.prefix}-unicode61` });
+  const uniName = `${dbOpts.prefix}-unicode61${ftsPrefix ? `-p${ftsPrefix.replaceAll(' ', '_')}` : ''}`;
+  const { db: dbUni, docs } = await loadCorpus(corpusPath, 'unicode61', { ...dbOpts, name: uniName, ftsPrefix });
   const { db: dbTri } = await loadCorpus(corpusPath, 'trigram remove_diacritics 1', { ...dbOpts, name: `${dbOpts.prefix}-trigram` });
   const search = prep(dbUni);
   const searchTri = prep(dbTri);
@@ -391,18 +400,15 @@ async function lanesForDe(corpusPath, stem, dbOpts, stopwords = 'stemmer', adapt
     lanes[`adaptive-search-${tau}`] = (q) => adaptiveSearch(search, countUpTo, q, (r) => r.content,
       { k: 10, tau, expand: (t) => stem.queryTermVariants(t), ...de });
   }
-  // T26: words of at least n letters (letters only) as prefix queries
+  // T26: words of at least n letters (letters only) as prefix queries; since T31 via the library option
   for (const n of prefixMin) {
-    lanes[`or-prefix-${n}`] = (q) => {
-      const ts = tokenize(q, de);
-      return ts.length ? search(ts.map((t) => (/^\p{L}+$/u.test(t) && [...t].length >= n ? `${quoteTerm(t)}*` : quoteTerm(t))).join(' OR ')) : [];
-    };
+    lanes[`or-prefix-${n}`] = (q) => (tokenize(q, de).length ? search(buildOrMatch(q, { ...de, prefixMin: n })) : []);
   }
   return result;
 }
 
 async function run() {
-  const { data, repeat, json, perQuery, lanes: laneFilter, titleWeights, lang, stemmer, dbDir, reportDb, reuseDb, stopwords, adaptiveTau, prefixMin } = parseArgs(process.argv.slice(2));
+  const { data, repeat, json, perQuery, lanes: laneFilter, titleWeights, lang, stemmer, dbDir, reportDb, reuseDb, stopwords, adaptiveTau, prefixMin, ftsPrefix } = parseArgs(process.argv.slice(2));
   const corpusPath = join(data, 'corpus.jsonl');
   const dbOpts = { dbDir, prefix: basename(resolve(data)), reuse: reuseDb };
   const queries = new Map(readJsonl(join(data, 'queries.jsonl')).map((q) => [String(q._id), q.text]));
@@ -418,7 +424,7 @@ async function run() {
     if (!(stem.STOPWORDS instanceof Set) || typeof stem.queryTermVariants !== 'function') {
       throw new Error('beir-bench: --stemmer module must export STOPWORDS (Set) and queryTermVariants()');
     }
-    ({ lanes, tokOpts, dbBytes, docs: docCount } = await lanesForDe(corpusPath, stem, dbOpts, stopwords ?? 'stemmer', adaptiveTau ?? [], prefixMin ?? []));
+    ({ lanes, tokOpts, dbBytes, docs: docCount } = await lanesForDe(corpusPath, stem, dbOpts, stopwords ?? 'stemmer', adaptiveTau ?? [], prefixMin ?? [], ftsPrefix));
   } else {
     const { db, docs } = await loadCorpus(corpusPath, 'porter unicode61', { ...dbOpts, name: `${dbOpts.prefix}-porter-unicode61` });
     docCount = docs;
@@ -473,6 +479,7 @@ async function run() {
     out.lang = 'de';
     out.dbBytes = dbBytes;
     if (stopwords === 'lib') out.stopwords = 'lib';
+    if (ftsPrefix) out.ftsPrefix = ftsPrefix;
   }
   if (reportDb) {
     out.buildMs = Object.fromEntries(builtIndexes.map((x) => [x.name, +x.ms.toFixed(0)]));
