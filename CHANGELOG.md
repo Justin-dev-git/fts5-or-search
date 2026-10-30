@@ -5,6 +5,28 @@ Behavior changes to public functions are marked **Behavior change**.
 
 ## Unreleased
 
+### Added: scale tooling (bench and scripts only, no library change)
+- `scripts/beir-bench.mjs` streams `corpus.jsonl` line by line instead of
+  reading it into one string, so multi-GB corpora load. New `--db-dir <dir>`
+  builds the FTS5 databases as files (never overwriting existing ones), new
+  `--report-db` reports build time and size per index. Default behaviour is
+  unchanged: rankings and per-query output byte-identical to the previous
+  version on all fixtures and a 5 000-doc synthetic corpus, in memory and
+  with `--db-dir`.
+- `scripts/to-beir.mjs --format msmarco-tsv`: MS MARCO / mMARCO collection,
+  queries and TREC qrels into the BEIR layout, streamed.
+- `scripts/subsample-beir.mjs`: deterministic subsets (first n queries in
+  qrels order, their relevant passages, filled with the smallest other
+  numeric ids), so English and German subsets of one size hold the same
+  passages.
+- `test/scale-tools.test.mjs` with `test/fixtures/msmarco-mini`.
+- `--reuse-db`: reuse an index whose build finished (`<name>.db.done` marker
+  with tokenizer and corpus size), refuse a database without marker.
+- `scripts/scale-run.sh`: resumable background runner for T19 (subsets, id
+  hash check en/de, one bench process per lane with a time limit, merges,
+  compares, `results/summary.md`); helpers `scripts/merge-per-query.mjs` and
+  `scripts/scale-summary.mjs`; `test/scale-run.test.mjs`.
+
 ### Added: STOPWORDS_DE and the German recommendation
 - `STOPWORDS_DE` (94 entries) is exported: an exact copy of `STOPWORDS` in
   german-fts5-stemmer 17e64135, the list all German measurements used
