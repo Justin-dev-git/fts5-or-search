@@ -5,6 +5,15 @@ Behavior changes to public functions are marked **Behavior change**.
 
 ## Unreleased
 
+### Added: `adaptiveSearch` (T25, library, measured – not recommended)
+- `adaptiveSearch(search, countUpTo, query, getText, { k, tau, expand, stopwords })`
+  in `lib/or-search.mjs`: plain OR unless the OR match hits at most τ documents,
+  then a caller-provided expansion with coverage re-rank. No new dependency.
+  Bench lane `adaptive-search-<n>`; `test/adaptive-search.test.mjs`.
+- Reproduces the T24 lane `adaptive-stem-1000` exactly (0 of 4 382 questions).
+  On untuned native German (WebFAQ-de 100 000 / 891 201, GerDaLIRSmall) it gains
+  at most +0.0030 nDCG@10 and misses E5 everywhere; the recommendation stays plain OR.
+
 ### Added: adaptive bench lanes (T24, bench only, no library change)
 - `scripts/beir-bench.mjs --adaptive-tau <n,...>` (German): `adaptive-trigram-<n>`
   and `adaptive-stem-<n>` expand only queries whose plain OR match on the

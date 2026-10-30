@@ -2345,3 +2345,122 @@ adaptive-trigram-10000 − or, de-1000000 (test): n=1000 mean -0.0063, 95 % CI [
   100 000 and 1 000 000 passages (`or-trigram`: +0.0007 [−0.0156, +0.0168]
   on the test split and +0.0110 [−0.0041, +0.0261] on the tuning split at
   1 000 000). Differences around the E5 threshold of +0.01 are within that.
+
+
+## T25 – adaptiveSearch (library) and confirmation on untuned data
+
+Question: T24 found that expanding only sparse queries (`adaptive-stem-1000`)
+meets the measurable parts of E5 in every size class on mMARCO-de and
+GovService. Does a library version reproduce it exactly, and does the gain
+hold on data where nothing was tuned?
+
+Code: commit `c398b8723ba789b310b5868544f1da564aadf581`. `adaptiveSearch(search,
+countUpTo, query, getText, { k, tau, expand, stopwords })` in
+`lib/or-search.mjs` runs plain OR unless the OR match hits at most τ documents;
+then it searches the caller-provided expansion groups and re-ranks by group
+coverage (pool 5k). The library has no stemmer dependency; the bench lane
+`adaptive-search-<τ>` passes german-fts5-stemmer variants (library code
+unchanged since `366ed51`). `test/adaptive-search.test.mjs` covers the
+boundary τ=5/4 and the k=1 pool.
+
+### Parity with the T24 lane
+
+`--adaptive-tau 1000 --lanes adaptive-search-1000 --repeat 1 --per-query` on the
+T24 test sets: per-query nDCG@10 is identical to T24 `adaptive-stem-1000` for
+all 4 382 questions (mMARCO-de 10 000 / 100 000 / 1 000 000: 1 000 each,
+GermanDPR 1 025, GovService 357; 0 differences).
+
+### Confirmation (τ = 1 000 fixed, nothing tuned on these sets)
+
+- WebFAQ-de: `PaDaS-Lab/webfaq-retrieval`, subset `deu`, CC BY 4.0, revision
+  `1abff20b9ea37abeec151bd8bcfa78c31a48f9fb`; converted to BEIR layout
+  (`corpus.jsonl` sha256 `f3d0fcaacd581785f179d202f1e720e2634e7762926ce2ce19d0539bb4a168e2`,
+  `queries-test.jsonl` `f468afadb196f84370ab8816665f4843e0ea33efbfe4dbb09aaee1f035741110`,
+  `qrels-test.jsonl` `165c005594afeaab8b034a3f89707c4767e02b6580013bd46b985f21ef205eb4`).
+  Full corpus (891 201 answers, class large) and a subset with 100 000
+  (class medium), each with the first 3 000 test questions in qrels order
+  (`docs=100000|891201 queries=3000 qrels=3000 rel_docs=3000 missing_rel=0`).
+- GerDaLIRSmall: `mteb/GerDaLIRSmall`, MIT, revision
+  `b199f38071bc06a2cb86c4c10d57ecee6c46056a`; 9 969 decisions (class small),
+  the first 1 000 test questions (1 215 qrels). The questions are long
+  paragraphs.
+- Lanes `and,or,or-stem,or-trigram,hybrid-expanded,adaptive-search-1000`,
+  `--stopwords lib`, `--repeat 2`, one run per set, each pinned to its own
+  core. Other work ran on the machine (another benchmark on other cores);
+  latencies are compared only within one run.
+
+WebFAQ-de 100 000:
+
+```
+dataset=deu-100000 docs=100000 queries=3000 repeat=2
+lane                  ndcg@10  mrr@10  recall@100  p@10    p50ms  p95ms
+and                   0.1453   0.1437  0.1517      0.0150  0.08   0.25
+or                    0.6065   0.5774  0.7930      0.0698  1.26   5.39
+or-stem               0.5891   0.5572  0.8070      0.0690  2.00   8.36
+or-trigram            0.6370   0.6076  0.8273      0.0729  15.39  36.13
+hybrid-expanded       0.5814   0.5494  0.7780      0.0683  1.73   7.82
+adaptive-search-1000  0.6074   0.5766  0.7043      0.0704  1.22   5.00
+db size MB: unicode61=68.48 trigram=189.38
+```
+
+WebFAQ-de 891 201:
+
+```
+dataset=deu-all docs=891201 queries=3000 repeat=2
+lane                  ndcg@10  mrr@10  recall@100  p@10    p50ms   p95ms
+and                   0.1332   0.1295  0.1500      0.0145  0.28    1.57
+or                    0.4665   0.4317  0.7120      0.0577  10.10   50.97
+or-stem               0.4433   0.4088  0.7063      0.0553  15.68   73.95
+or-trigram            0.4904   0.4549  0.7373      0.0603  120.37  295.40
+hybrid-expanded       0.4489   0.4154  0.6583      0.0556  15.30   73.71
+adaptive-search-1000  0.4695   0.4349  0.5797      0.0580  9.91    49.84
+db size MB: unicode61=579.20 trigram=1670.14
+```
+
+GerDaLIRSmall:
+
+```
+dataset=small-q1000 docs=9969 queries=1000 repeat=2
+lane                  ndcg@10  mrr@10  recall@100  p@10    p50ms    p95ms
+and                   0.0343   0.0355  0.0343      0.0036  2.24     7.60
+or                    0.6150   0.5988  0.8416      0.0867  94.37    425.84
+or-stem               0.5907   0.5745  0.8264      0.0847  116.45   341.81
+or-trigram            0.6143   0.5970  0.8493      0.0875  1970.73  6191.33
+hybrid-expanded       0.3977   0.3768  0.7923      0.0628  201.07   856.45
+adaptive-search-1000  0.6150   0.5988  0.7214      0.0867  82.79    400.85
+db size MB: unicode61=273.13 trigram=611.05
+```
+
+E5 per lane against `or` of the same run (paired bootstrap, 4 000 resamples):
+
+| lane | test set | class | ΔnDCG@10 [95 % CI] | ΔP@10 | p95 lane / `or` ms | budget ms | E5 (excl. lines) |
+|---|---|---|---|---:|---:|---:|---|
+| `or-stem` | GerDaLIRSmall (9 969) | small | −0.0243 [−0.0345, −0.0137] | −0.0020 | 341.81 / 425.84 | 1277.52 | not met |
+| `or-stem` | WebFAQ-de 100 000 | medium | −0.0174 [−0.0247, −0.0096] | −0.0008 | 8.36 / 5.39 | 16.17 | not met |
+| `or-stem` | WebFAQ-de 891 201 | large | −0.0232 [−0.0304, −0.0159] | −0.0024 | 73.95 / 50.97 | 152.91 | not met |
+| `or-trigram` | GerDaLIRSmall (9 969) | small | −0.0007 [−0.0096, +0.0084] | +0.0008 | 6191.33 / 425.84 | 1277.52 | not met |
+| `or-trigram` | WebFAQ-de 100 000 | medium | +0.0305 [+0.0213, +0.0392] | +0.0031 | 36.13 / 5.39 | 16.17 | not met |
+| `or-trigram` | WebFAQ-de 891 201 | large | +0.0239 [+0.0152, +0.0330] | +0.0026 | 295.40 / 50.97 | 152.91 | not met |
+| `hybrid-expanded` | GerDaLIRSmall (9 969) | small | −0.2173 [−0.2392, −0.1947] | −0.0239 | 856.45 / 425.84 | 1277.52 | not met |
+| `hybrid-expanded` | WebFAQ-de 100 000 | medium | −0.0251 [−0.0357, −0.0150] | −0.0015 | 7.82 / 5.39 | 16.17 | not met |
+| `hybrid-expanded` | WebFAQ-de 891 201 | large | −0.0176 [−0.0275, −0.0076] | −0.0021 | 73.71 / 50.97 | 152.91 | not met |
+| `adaptive-search-1000` | GerDaLIRSmall (9 969) | small | +0.0000 [+0.0000, +0.0000] | +0.0000 | 400.85 / 425.84 | 1277.52 | not met |
+| `adaptive-search-1000` | WebFAQ-de 100 000 | medium | +0.0009 [−0.0052, +0.0069] | +0.0006 | 5.00 / 5.39 | 16.17 | not met |
+| `adaptive-search-1000` | WebFAQ-de 891 201 | large | +0.0030 [+0.0005, +0.0058] | +0.0003 | 49.84 / 50.97 | 152.91 | not met |
+
+### Facts (no recommendation change)
+
+- The library function reproduces the T24 lane exactly (0 of 4 382 questions differ).
+- On the untuned native-German sets it is never significantly worse than `or`,
+  but it gains little: WebFAQ-de 891 201 +0.0030 [+0.0005, +0.0058],
+  100 000 +0.0009 [−0.0052, +0.0069], GerDaLIRSmall +0.0000 (the switch never
+  fires: the paragraph-length questions hit more than 1 000 documents). It
+  misses the E5 threshold of +0.01 on all three, so plain OR stays the
+  recommendation; `adaptiveSearch` stays in the library as a measured option.
+- Its recall@100 is lower (0.5797 vs. 0.7120 on WebFAQ-de 891 201) only
+  because the function returns k = 10 results; nDCG@10 and P@10 are unaffected.
+- `or-stem` is worse on all three sets (−0.0174 to −0.0243, intervals exclude zero);
+  `hybrid-expanded` too, by −0.2173 on GerDaLIRSmall.
+- `or-trigram` gains on WebFAQ-de (+0.0305 and +0.0239, intervals exclude
+  zero) but fails the latency budget (p95 36.13 vs. 5.39 ms and 295.40 vs.
+  50.97 ms) and is neutral on GerDaLIRSmall at a p95 of 6 191 ms.
