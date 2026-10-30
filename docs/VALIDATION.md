@@ -2555,6 +2555,206 @@ uses its fixed defaults k1 = 1.2, b = 0.75.
   1 000 000): the subsets keep all judged passages and add fewer distractors;
   they also use other questions (1 000 vs. 6 980).
 
+## T26 – Prefix queries on the unicode61 index
+
+Question: on native German, trigram gains about +0.03 nDCG@10 because it finds
+word parts ("Hund" in "Hundehalter"), but it needs a second index about three
+times the size and fails the E5 latency budget on medium and large corpora
+(T25). Do FTS5 prefix queries (`"hund"*`) on the normal `unicode61` index get a
+similar gain without a second index?
+
+Code: commit `971bd84` (`scripts/beir-bench.mjs` byte-identical to the local
+measurement commit `5aad34f`; the library differs only in the `adaptiveSearch`
+guard from T25, which these lanes do not use). `--prefix-min <n,...>`
+adds the bench lanes `or-prefix-<n>`: the `or` match with every word of at
+least n letters (letters only, so codes and numbers stay exact) as an FTS5
+prefix query; `--stopwords lib`. Bench only, no library change.
+`test/prefix.test.mjs` with fixture `test/fixtures/beir-de-prefix` checks the
+lane by hand-computed values: the length threshold, codes with digits staying
+exact, and its blind spot: a prefix query finds
+compounds that START with the query word ("Hund" → "Hundehalter"), not those
+that END with it ("Ausweis" → "Personalausweis"); in German the head of a
+compound is its last part, so trigram can still find more.
+
+### Tuning (n chosen before the test)
+
+Grid n = 4 … 8 on GermanDPR and the mMARCO-de tuning split of T24 (questions
+1 001–2 000) at 10 000, 100 000 and 1 000 000 passages; chosen: the n with the
+highest mean ΔnDCG@10 against `or` (equal weights). ΔnDCG@10 against `or`
+(means of the per-query differences):
+
+| n | GermanDPR (2 876) | mMARCO-de 10 000 | mMARCO-de 100 000 | mMARCO-de 1 000 000 | mean |
+|---:|---:|---:|---:|---:|---:|
+| 4 | +0.0426 | +0.0345 | +0.0240 | +0.0131 | +0.0285 |
+| 5 | +0.0394 | +0.0341 | +0.0251 | +0.0149 | +0.0284 |
+| 6 | +0.0354 | +0.0325 | +0.0228 | +0.0161 | +0.0267 |
+| 7 | +0.0303 | +0.0245 | +0.0163 | +0.0123 | +0.0208 |
+| 8 | +0.0254 | +0.0215 | +0.0131 | +0.0097 | +0.0174 |
+
+n = 4 was chosen; n = 5 is practically tied (−0.0002) and ran in the test as a
+second, not chosen lane.
+
+### Test (nothing tuned on these sets)
+
+mMARCO-de test questions 1–1 000 at 10 000 / 100 000 / 1 000 000 passages (the
+T19/T21 subsets), WebFAQ-de 100 000 and 891 201 (3 000 questions each) and
+GerDaLIRSmall (1 000 questions) as in T25. GovService was looked at before the
+tuning and is reported separately as "seen". Lanes
+`and,or,or-trigram,or-prefix-4,or-prefix-5`, one run per set, `--repeat 2`
+(GovService 3), on five pinned cores (mMARCO-de 10 000, GerDaLIRSmall and
+GovService one after another on the same core). Other work ran on the machine;
+that core was also shared with a low-priority (nice 19) CPU job during part of
+the GerDaLIRSmall and GovService runs, so latencies are compared only within
+one run.
+
+mMARCO-de 10 000:
+
+```
+dataset=de-10000 docs=10000 queries=1000 repeat=2
+lane         ndcg@10  mrr@10  recall@100  p@10    p50ms  p95ms
+and          0.1853   0.1870  0.1888      0.0195  0.03   0.06
+or           0.6022   0.5833  0.7255      0.0707  0.25   0.48
+or-trigram   0.6277   0.6074  0.7675      0.0737  1.40   3.24
+or-prefix-4  0.6431   0.6235  0.7677      0.0749  0.75   1.42
+or-prefix-5  0.6433   0.6239  0.7647      0.0749  0.74   1.43
+db size MB: unicode61=7.22 trigram=20.38
+```
+
+mMARCO-de 100 000:
+
+```
+dataset=de-100000 docs=100000 queries=1000 repeat=2
+lane         ndcg@10  mrr@10  recall@100  p@10    p50ms  p95ms
+and          0.1783   0.1793  0.1888      0.0190  0.09   0.25
+or           0.4948   0.4748  0.6730      0.0600  1.16   3.29
+or-trigram   0.5069   0.4855  0.6983      0.0617  12.92  34.42
+or-prefix-4  0.5341   0.5131  0.7105      0.0645  2.01   5.80
+or-prefix-5  0.5327   0.5111  0.7125      0.0645  1.93   5.37
+db size MB: unicode61=67.47 trigram=188.87
+```
+
+mMARCO-de 1 000 000:
+
+```
+dataset=de-1000000 docs=1000000 queries=1000 repeat=2
+lane         ndcg@10  mrr@10  recall@100  p@10    p50ms   p95ms
+and          0.1508   0.1468  0.1838      0.0176  0.34    2.17
+or           0.3493   0.3258  0.5719      0.0454  13.22   38.00
+or-trigram   0.3500   0.3283  0.5854      0.0450  118.08  379.42
+or-prefix-4  0.3668   0.3435  0.6149      0.0475  21.28   64.02
+or-prefix-5  0.3683   0.3444  0.6164      0.0479  17.03   51.96
+db size MB: unicode61=663.22 trigram=1942.40
+```
+
+WebFAQ-de 100 000:
+
+```
+dataset=deu-100000 docs=100000 queries=3000 repeat=2
+lane         ndcg@10  mrr@10  recall@100  p@10    p50ms  p95ms
+and          0.1453   0.1437  0.1517      0.0150  0.12   0.36
+or           0.6065   0.5774  0.7930      0.0698  1.88   7.27
+or-trigram   0.6370   0.6076  0.8273      0.0729  23.79  58.99
+or-prefix-4  0.6395   0.6103  0.8277      0.0731  3.94   14.44
+or-prefix-5  0.6392   0.6098  0.8260      0.0731  4.30   16.43
+db size MB: unicode61=68.48 trigram=189.38
+```
+
+WebFAQ-de 891 201:
+
+```
+dataset=deu-all docs=891201 queries=3000 repeat=2
+lane         ndcg@10  mrr@10  recall@100  p@10    p50ms   p95ms
+and          0.1332   0.1295  0.1500      0.0145  0.45    2.05
+or           0.4665   0.4317  0.7120      0.0577  18.05   72.58
+or-trigram   0.4904   0.4549  0.7373      0.0603  161.70  408.66
+or-prefix-4  0.4946   0.4586  0.7453      0.0609  22.49   86.76
+or-prefix-5  0.4944   0.4590  0.7437      0.0607  18.63   75.91
+db size MB: unicode61=579.20 trigram=1670.14
+```
+
+GerDaLIRSmall:
+
+```
+dataset=small-q1000 docs=9969 queries=1000 repeat=2
+lane         ndcg@10  mrr@10  recall@100  p@10    p50ms    p95ms
+and          0.0343   0.0355  0.0343      0.0036  2.38     8.13
+or           0.6150   0.5988  0.8416      0.0867  72.28    313.53
+or-trigram   0.6143   0.5970  0.8493      0.0875  1544.52  4598.05
+or-prefix-4  0.6153   0.5989  0.8487      0.0871  127.62   490.54
+or-prefix-5  0.6157   0.5991  0.8470      0.0871  121.44   461.88
+db size MB: unicode61=273.13 trigram=611.05
+```
+
+GovService (seen before tuning):
+
+```
+dataset=govservice docs=105 queries=357 repeat=3
+lane         ndcg@10  mrr@10  recall@100  p@10    p50ms  p95ms
+and          0.1005   0.0994  0.1036      0.0104  0.02   0.04
+or           0.7280   0.6785  0.9020      0.0880  0.11   0.39
+or-trigram   0.7629   0.7162  0.9356      0.0905  0.31   0.74
+or-prefix-4  0.7516   0.7017  0.9328      0.0905  0.35   0.71
+or-prefix-5  0.7552   0.7062  0.9300      0.0905  0.33   0.66
+db size MB: unicode61=0.26 trigram=0.64
+```
+
+E5 per lane against `or` of the same run (T22 latency floor, T23 size classes;
+paired bootstrap, 4 000 resamples, the same seed for every lane and set):
+
+| lane | test set | class | ΔnDCG@10 [95 % CI] | ΔP@10 | p95 lane / `or` ms | budget ms | E5 (excl. lines) |
+|---|---|---|---|---:|---:|---:|---|
+| `or-prefix-4` | mMARCO-de 10 000 | small | +0.0409 [+0.0272, +0.0547] | +0.0042 | 1.42 / 0.48 | 10.48 | met |
+| `or-prefix-4` | GerDaLIRSmall (9 969) | small | +0.0003 [−0.0071, +0.0080] | +0.0004 | 490.54 / 313.53 | 940.59 | not met |
+| `or-prefix-4` | mMARCO-de 100 000 | medium | +0.0393 [+0.0260, +0.0539] | +0.0045 | 5.80 / 3.29 | 13.29 | met |
+| `or-prefix-4` | WebFAQ-de 100 000 | medium | +0.0330 [+0.0255, +0.0408] | +0.0033 | 14.44 / 7.27 | 21.81 | met |
+| `or-prefix-4` | mMARCO-de 1 000 000 | large | +0.0174 [+0.0057, +0.0293] | +0.0021 | 64.02 / 38.00 | 114.00 | met |
+| `or-prefix-4` | WebFAQ-de 891 201 | large | +0.0281 [+0.0208, +0.0352] | +0.0032 | 86.76 / 72.58 | 217.74 | met |
+| `or-prefix-4` | GovService (seen) | small | +0.0237 [+0.0062, +0.0415] | +0.0025 | 0.71 / 0.39 | 10.39 | met |
+| `or-prefix-5` | mMARCO-de 10 000 | small | +0.0411 [+0.0280, +0.0543] | +0.0042 | 1.43 / 0.48 | 10.48 | met |
+| `or-prefix-5` | GerDaLIRSmall (9 969) | small | +0.0008 [−0.0065, +0.0080] | +0.0004 | 461.88 / 313.53 | 940.59 | not met |
+| `or-prefix-5` | mMARCO-de 100 000 | medium | +0.0380 [+0.0251, +0.0516] | +0.0045 | 5.37 / 3.29 | 13.29 | met |
+| `or-prefix-5` | WebFAQ-de 100 000 | medium | +0.0326 [+0.0254, +0.0401] | +0.0033 | 16.43 / 7.27 | 21.81 | met |
+| `or-prefix-5` | mMARCO-de 1 000 000 | large | +0.0189 [+0.0078, +0.0303] | +0.0025 | 51.96 / 38.00 | 114.00 | met |
+| `or-prefix-5` | WebFAQ-de 891 201 | large | +0.0280 [+0.0211, +0.0348] | +0.0030 | 75.91 / 72.58 | 217.74 | met |
+| `or-prefix-5` | GovService (seen) | small | +0.0273 [+0.0108, +0.0444] | +0.0025 | 0.66 / 0.39 | 10.39 | met |
+| `or-trigram` | mMARCO-de 10 000 | small | +0.0255 [+0.0089, +0.0423] | +0.0030 | 3.24 / 0.48 | 10.48 | met |
+| `or-trigram` | GerDaLIRSmall (9 969) | small | −0.0006 [−0.0096, +0.0086] | +0.0008 | 4598.05 / 313.53 | 940.59 | not met |
+| `or-trigram` | mMARCO-de 100 000 | medium | +0.0121 [−0.0048, +0.0305] | +0.0017 | 34.42 / 3.29 | 13.29 | not met |
+| `or-trigram` | WebFAQ-de 100 000 | medium | +0.0304 [+0.0211, +0.0398] | +0.0030 | 58.99 / 7.27 | 21.81 | not met |
+| `or-trigram` | mMARCO-de 1 000 000 | large | +0.0007 [−0.0150, +0.0170] | −0.0004 | 379.42 / 38.00 | 114.00 | not met |
+| `or-trigram` | WebFAQ-de 891 201 | large | +0.0239 [+0.0150, +0.0327] | +0.0026 | 408.66 / 72.58 | 217.74 | not met |
+| `or-trigram` | GovService (seen) | small | +0.0349 [+0.0134, +0.0574] | +0.0025 | 0.74 / 0.39 | 10.39 | met |
+
+Δ values are means of the per-query differences (not differences of the rounded table means).
+
+### Facts
+
+- `or-prefix-4` meets the measurable parts of E5 on 5 of the 6 untuned sets
+  (+0.0174 on mMARCO-de 1 000 000 to +0.0409 on mMARCO-de 10 000 nDCG@10, all
+  intervals exclude zero, P@10 never lower) and on GovService (seen before the
+  tuning, +0.0237).
+- Per size class (T23: a class counts only if E5 holds on every untuned set of
+  that class): medium and large hold (2 of 2 each, mMARCO-de and WebFAQ-de);
+  small does not, because GerDaLIRSmall (9 969 documents) gains only
+  +0.0003 [−0.0071, +0.0080]. Its questions are paragraph-length; presumably
+  plain OR already matches enough of the right words (not measured). Trigram
+  does not help there either (−0.0006).
+- Against trigram the prefix lane is as good or better on mMARCO-de and WebFAQ-de
+  (WebFAQ-de 891 201: 0.4946 vs. 0.4904; mMARCO-de 1 000 000: 0.3668 vs. 0.3500)
+  at a fraction of the latency (p95 86.76 vs. 408.66 ms and 64.02 vs. 379.42 ms)
+  and without the second index (579 vs. 1 670 MB and 663 vs. 1 942 MB). On
+  mMARCO-de it is significantly better than trigram, on WebFAQ-de the interval
+  contains zero. On GovService trigram is ahead (0.7629 vs. 0.7516), not
+  significantly (prefix-4 minus trigram −0.0112 [−0.0253, +0.0026]); the
+  compound blind spot above is a possible reason.
+- The p95 of the prefix lane is 1.2 to 3 times that of `or` and inside the E5
+  budget on every set.
+- n = 4 and n = 5 cannot be told apart on the test sets either (at most 0.0015
+  nDCG@10 apart on the six untuned sets, 0.0036 on GovService).
+- Per the task, a library option and a recommendation follow separately; this
+  section changes no recommendation by itself.
+
+
 ## T28 – Case study: FTS5 in OpenClaw memory and context search (aggregate numbers)
 
 Setting: one private OpenClaw installation (OpenClaw 2026.10.7, plugin
