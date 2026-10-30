@@ -26,6 +26,10 @@
 //           German lane. `stemmer` (default) is the stemmer's STOPWORDS, as in
 //           T16-T19; `lib` is STOPWORDS_DE from lib/or-search.mjs (JSON field
 //           stopwords: "lib").
+//   --adaptive-tau <n,...>  German only (T24): add the lanes adaptive-trigram-<n>
+//           and adaptive-stem-<n> for each n. A query whose plain OR match hits
+//           at most n documents of the unicode61 index takes or-trigram or
+//           hybrid-expanded, every other query plain `or`.
 //   --json  additionally prints one JSON line as the LAST output line:
 //           { dataset, docs, queries, lanes: { <lane>:
 //             { ndcg10, mrr10, recall100, p50ms, p95ms } } }
@@ -50,7 +54,7 @@ const BLEND_LAMBDAS = { blend: [0, 0.1, 0.2, 0.5], blendidf: [0.1, 0.2, 0.5] };
 function parseArgs(argv) {
   const out = {
     data: null, repeat: 3, json: false, perQuery: null, lanes: null, titleWeights: null,
-    lang: 'en', stemmer: null, dbDir: null, reportDb: false, reuseDb: false, stopwords: null,
+    lang: 'en', stemmer: null, dbDir: null, reportDb: false, reuseDb: false, stopwords: null, adaptiveTau: null,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -65,6 +69,12 @@ function parseArgs(argv) {
     else if (a === '--report-db') out.reportDb = true;
     else if (a === '--reuse-db') out.reuseDb = true;
     else if (a === '--stopwords') out.stopwords = argv[++i];
+    else if (a === '--adaptive-tau') {
+      out.adaptiveTau = argv[++i].split(',').filter(Boolean).map(Number);
+      if (!out.adaptiveTau.length || !out.adaptiveTau.every((n) => Number.isInteger(n) && n >= 0)) {
+        throw new Error('beir-bench: --adaptive-tau needs non-negative integers');
+      }
+    }
     else if (a === '--title-weights') {
       out.titleWeights = argv[++i].split(',').filter(Boolean).map((s) => {
         const w = Number(s);
@@ -82,6 +92,7 @@ function parseArgs(argv) {
     if (out.lang !== 'de') throw new Error('beir-bench: --stopwords is German-only');
     if (!['stemmer', 'lib'].includes(out.stopwords)) throw new Error(`beir-bench: --stopwords must be stemmer or lib, got ${out.stopwords}`);
   }
+  if (out.adaptiveTau && out.lang !== 'de') throw new Error('beir-bench: --adaptive-tau is German-only');
   if (out.dbDir && !(existsSync(out.dbDir) && statSync(out.dbDir).isDirectory())) {
     throw new Error(`beir-bench: --db-dir must be an existing directory: ${out.dbDir}`);
   }
@@ -305,7 +316,7 @@ function substringCoverageRerank(rows, groups) {
 const dropStopwords = (q, sw) => q.toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, ' ').split(/\s+/)
   .map((w) => w.replace(/^-+/, '').replace(/-+$/, '')).filter((w) => w && !sw.has(w)).join(' ');
 
-async function lanesForDe(corpusPath, stem, dbOpts, stopwords = 'stemmer') {
+async function lanesForDe(corpusPath, stem, dbOpts, stopwords = 'stemmer', adaptiveTau = []) {
   const sw = stopwords === 'lib' ? STOPWORDS_DE : stem.STOPWORDS;
   const de = { stopwords: sw };
   const variants = stopwords === 'lib'
@@ -323,7 +334,7 @@ async function lanesForDe(corpusPath, stem, dbOpts, stopwords = 'stemmer') {
     const vs = [...new Set(variants(q, { paradigm }).flat())];
     return vs.length ? `(${vs.map(quoteTerm).join(' OR ')})` : '""';
   };
-  return {
+  const result = {
     lanes: {
       and: (q) => search(sanitizeMatch(q, de)),
       or: (q) => search(buildOrMatch(q, de)),
@@ -355,10 +366,21 @@ async function lanesForDe(corpusPath, stem, dbOpts, stopwords = 'stemmer') {
     // whole database incl. stored text; the difference is index size
     dbBytes: { unicode61: dbBytesOf(dbUni), trigram: dbBytesOf(dbTri) },
   };
+  // T24: a query is sparse if its plain OR match hits at most tau documents of
+  // the unicode61 index (counted with LIMIT tau+1, so a dense query stops
+  // early). Sparse queries take the expanded lane, all others plain `or`.
+  const { lanes } = result;
+  const sparseStmt = dbUni.prepare('SELECT count(*) AS c FROM (SELECT 1 FROM docs WHERE docs MATCH ? LIMIT ?)');
+  const sparse = (q, tau) => sparseStmt.get(buildOrMatch(q, de), tau + 1).c <= tau;
+  for (const tau of adaptiveTau) {
+    lanes[`adaptive-trigram-${tau}`] = (q) => (sparse(q, tau) ? lanes['or-trigram'](q) : lanes.or(q));
+    lanes[`adaptive-stem-${tau}`] = (q) => (sparse(q, tau) ? lanes['hybrid-expanded'](q) : lanes.or(q));
+  }
+  return result;
 }
 
 async function run() {
-  const { data, repeat, json, perQuery, lanes: laneFilter, titleWeights, lang, stemmer, dbDir, reportDb, reuseDb, stopwords } = parseArgs(process.argv.slice(2));
+  const { data, repeat, json, perQuery, lanes: laneFilter, titleWeights, lang, stemmer, dbDir, reportDb, reuseDb, stopwords, adaptiveTau } = parseArgs(process.argv.slice(2));
   const corpusPath = join(data, 'corpus.jsonl');
   const dbOpts = { dbDir, prefix: basename(resolve(data)), reuse: reuseDb };
   const queries = new Map(readJsonl(join(data, 'queries.jsonl')).map((q) => [String(q._id), q.text]));
@@ -374,7 +396,7 @@ async function run() {
     if (!(stem.STOPWORDS instanceof Set) || typeof stem.queryTermVariants !== 'function') {
       throw new Error('beir-bench: --stemmer module must export STOPWORDS (Set) and queryTermVariants()');
     }
-    ({ lanes, tokOpts, dbBytes, docs: docCount } = await lanesForDe(corpusPath, stem, dbOpts, stopwords ?? 'stemmer'));
+    ({ lanes, tokOpts, dbBytes, docs: docCount } = await lanesForDe(corpusPath, stem, dbOpts, stopwords ?? 'stemmer', adaptiveTau ?? []));
   } else {
     const { db, docs } = await loadCorpus(corpusPath, 'porter unicode61', { ...dbOpts, name: `${dbOpts.prefix}-porter-unicode61` });
     docCount = docs;
