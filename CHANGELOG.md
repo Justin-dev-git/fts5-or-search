@@ -5,6 +5,15 @@ Behavior changes to public functions are marked **Behavior change**.
 
 ## Unreleased
 
+### Added: prefix bench lanes (T26, bench only, no library change)
+- `scripts/beir-bench.mjs --prefix-min <n,...>` (German): lanes `or-prefix-<n>` run the
+  `or` match on `unicode61` with every word of at least n letters as an FTS5 prefix
+  query. `test/prefix.test.mjs` with fixture `test/fixtures/beir-de-prefix`.
+- Measured (n = 4 chosen on separate tuning sets): meets the measurable parts of E5 on
+  6 of 7 untuned German test sets in every size class (+0.0174 to +0.0409 nDCG@10),
+  as good as or better than trigram on mMARCO-de and WebFAQ-de at a fraction of the
+  latency, no gain on GerDaLIRSmall. No recommendation change yet.
+
 ### Added: `adaptiveSearch` (T25, library, measured – not recommended)
 - `adaptiveSearch(search, countUpTo, query, getText, { k, tau, expand, stopwords })`
   in `lib/or-search.mjs`: plain OR unless the OR match hits at most τ documents,

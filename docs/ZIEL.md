@@ -233,3 +233,15 @@ Alle Zahlen stammen aus `docs/VALIDATION.md`, Abschnitt T24.
   nDCG@10 bei 100 000 und 1 000 000 nicht von Rauschen zu unterscheiden. Die
   Klassenaussagen von T23 für „mittel“ und „groß“ sind daher schwach belegt.
 
+## Ergebnis nach T26 (30.10.2026)
+Alle Zahlen stammen aus `docs/VALIDATION.md`, Abschnitt T26.
+
+- **Präfix-Abfragen auf dem normalen Index** (`or-prefix-4`: Wörter ab 4 Buchstaben als `"wort"*`): erfüllen die
+  messbaren Teile von E5 auf 6 von 7 nicht abgestimmten Testsätzen in jeder Größenklasse (+0.0174 bis +0.0409
+  nDCG@10, Intervalle über null), ohne zweiten Index und innerhalb des Latenzbudgets.
+- Auf mMARCO-de und WebFAQ-de mindestens so gut wie Trigram, bei einem Bruchteil der Latenz und der Indexgröße.
+- Ausnahme GerDaLIRSmall (Anfragen in Absatzlänge): kein Gewinn, wie bei Trigram.
+- Grenze: Präfixe finden Komposita, die mit dem Suchwort beginnen, nicht solche, die damit enden („Ausweis“ →
+  „Personalausweis“).
+- Nächster Schritt laut Task: Library-Option und Empfehlung getrennt (nicht Teil von T26).
+
