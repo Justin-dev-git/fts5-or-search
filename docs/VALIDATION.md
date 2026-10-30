@@ -1425,3 +1425,584 @@ terms 7+  n=5  W=0 T=4 L=1  hybrid-expanded: ndcg@10=0.8524 p@10=0.1000  or: ndc
 - `or` vs `and` at 1 000 000, new list: 0.3493 vs 0.1508, W=274 T=720 L=6.
 - The full corpus (8 841 823 passages) and the comparison with the published
   BM25 values follow in their own task.
+
+## T19 – Scale (MS MARCO / mMARCO)
+
+Executed on 30.10.2026 by the reviewing agent on the GX10 (not by the local
+agent), Phase A and B as in `tasks/T19-scale.md`, with two deviations: the
+German lanes use `STOPWORDS_DE` (T21, `DE_STOPWORDS=lib`), and their results
+are the ones of the T21 run (`t21-lib`, stemmer lanes after the review fix),
+linked into this run so that `scale-run.sh` skipped them. The English lanes
+were measured in this run (code at `b91f437`; the English code paths are
+unchanged up to `07aa056`). Compares and `results/summary.md` were then
+regenerated at `07aa056` (every lane skipped, `results/params`:
+`queries=1000 repeat=2 full_queries=300 full_repeat=1 de_stopwords=lib`).
+
+Data, checksums, revision and conversion: as in T21 (same files). Machine:
+`nproc` 20, 121 GiB RAM, Node v24.22.1, SQLite 3.53.4. During the run a
+local LLM server (the llama.cpp-based Strata engine) served on the same
+machine, another session ran LLM benchmarks, and other measurements of this
+validation ran on other cores part of the time; latencies are from a loaded
+machine. Subsets: `docs=10000|100000|1000000 queries=1000 qrels=1053
+rel_docs=1053 missing_rel=0` for both languages. id sequence identical for en
+and de at every size (`results/idhash.txt`, size, en, de):
+
+```
+1000000 d8f65c13b77f252d2ed327e2d9c0612d3e1dbd2478bf62cf05a152eff75532e5 d8f65c13b77f252d2ed327e2d9c0612d3e1dbd2478bf62cf05a152eff75532e5
+100000 2dd56dd62ff567ceae2b14112e1528a83bdc7738a27a4ea1ec1326da6b342ee0 2dd56dd62ff567ceae2b14112e1528a83bdc7738a27a4ea1ec1326da6b342ee0
+10000 6983221e7679cbc4fddcba9109c812369cd61e9ca57c443af45e21bb600fba8d 6983221e7679cbc4fddcba9109c812369cd61e9ca57c443af45e21bb600fba8d
+```
+
+Command (Phase A, step 4, with the T21 variable):
+
+```
+cd "$REPO" && SCALE_DIR="$SCALE_DIR" STEMMER="$STEMMER" FULL=0 DE_STOPWORDS=lib nohup bash scripts/scale-run.sh > "$SCALE_DIR/scale-run.nohup.log" 2>&1 &
+```
+
+No lane hit the 6-hour limit (no `timeout` in the table). The full corpus
+(8 841 823 passages) and the comparison with the published BM25 values
+follow in their own task.
+
+### `results/summary.md`
+
+
+### English
+
+| size | docs | queries | lane | nDCG@10 | MRR@10 | Recall@100 | P@10 | p50 ms | p95 ms |
+|---|---:|---:|---|---:|---:|---:|---:|---:|---:|
+| 10000 | 10000 | 1000 | and | 0.1872 | 0.1908 | 0.1891 | 0.0196 | 0.04 | 0.10 |
+| 10000 | 10000 | 1000 | or | 0.8916 | 0.8729 | 0.9845 | 0.1006 | 0.55 | 1.14 |
+| 10000 | 10000 | 1000 | hybrid | 0.7866 | 0.7669 | 0.9505 | 0.0905 | 4.95 | 6.38 |
+| 10000 | 10000 | 1000 | hybrid-fts | 0.8345 | 0.8129 | 0.9725 | 0.0958 | 15.27 | 25.86 |
+| 10000 | 10000 | 1000 | hybrid-k10 | 0.7904 | 0.7689 | 0.8685 | 0.0916 | 1.07 | 1.78 |
+| 10000 | 10000 | 1000 | hybrid-nofloor-k10 | 0.7931 | 0.7726 | 0.8685 | 0.0916 | 0.98 | 1.67 |
+| 10000 | 10000 | 1000 | hybrid-fts-k10 | 0.8357 | 0.8139 | 0.9110 | 0.0960 | 2.03 | 3.63 |
+| 10000 | 10000 | 1000 | hybrid-substr-k10 | 0.8158 | 0.7935 | 0.9815 | 0.0944 | 0.57 | 1.20 |
+| 10000 | 10000 | 1000 | blend-0.1 | 0.8900 | 0.8711 | 0.9845 | 0.1005 | 14.92 | 25.81 |
+| 10000 | 10000 | 1000 | blendidf-0.1 | 0.8928 | 0.8742 | 0.9845 | 0.1007 | 15.53 | 26.44 |
+| 100000 | 100000 | 1000 | and | 0.1841 | 0.1876 | 0.1891 | 0.0193 | 0.17 | 0.62 |
+| 100000 | 100000 | 1000 | or | 0.7705 | 0.7433 | 0.9600 | 0.0913 | 3.79 | 9.99 |
+| 100000 | 100000 | 1000 | hybrid | 0.6644 | 0.6408 | 0.8695 | 0.0797 | 8.84 | 15.68 |
+| 100000 | 100000 | 1000 | hybrid-fts | 0.6963 | 0.6704 | 0.9145 | 0.0834 | 38.07 | 68.58 |
+| 100000 | 100000 | 1000 | hybrid-k10 | 0.6743 | 0.6474 | 0.7777 | 0.0819 | 4.21 | 10.36 |
+| 100000 | 100000 | 1000 | hybrid-nofloor-k10 | 0.6791 | 0.6534 | 0.7787 | 0.0820 | 4.02 | 9.85 |
+| 100000 | 100000 | 1000 | hybrid-fts-k10 | 0.6996 | 0.6727 | 0.7983 | 0.0841 | 7.12 | 14.46 |
+| 100000 | 100000 | 1000 | hybrid-substr-k10 | 0.6961 | 0.6664 | 0.9423 | 0.0847 | 3.68 | 9.24 |
+| 100000 | 100000 | 1000 | blend-0.1 | 0.7678 | 0.7418 | 0.9555 | 0.0906 | 37.52 | 67.80 |
+| 100000 | 100000 | 1000 | blendidf-0.1 | 0.7715 | 0.7451 | 0.9610 | 0.0910 | 37.07 | 67.07 |
+| 1000000 | 1000000 | 1000 | and | 0.1709 | 0.1718 | 0.1861 | 0.0187 | 0.80 | 5.39 |
+| 1000000 | 1000000 | 1000 | or | 0.5497 | 0.5107 | 0.8714 | 0.0718 | 48.87 | 123.10 |
+| 1000000 | 1000000 | 1000 | hybrid | 0.4744 | 0.4457 | 0.7668 | 0.0606 | 61.65 | 126.25 |
+| 1000000 | 1000000 | 1000 | hybrid-fts | 0.4958 | 0.4621 | 0.8032 | 0.0645 | 83.48 | 163.67 |
+| 1000000 | 1000000 | 1000 | hybrid-k10 | 0.4845 | 0.4512 | 0.6071 | 0.0632 | 47.38 | 117.24 |
+| 1000000 | 1000000 | 1000 | hybrid-nofloor-k10 | 0.4944 | 0.4620 | 0.6141 | 0.0639 | 51.07 | 128.87 |
+| 1000000 | 1000000 | 1000 | hybrid-fts-k10 | 0.4991 | 0.4646 | 0.6246 | 0.0651 | 49.53 | 119.85 |
+| 1000000 | 1000000 | 1000 | hybrid-substr-k10 | 0.5114 | 0.4786 | 0.8294 | 0.0656 | 44.23 | 110.68 |
+| 1000000 | 1000000 | 1000 | blend-0.1 | 0.5491 | 0.5094 | 0.8669 | 0.0719 | 79.94 | 157.46 |
+| 1000000 | 1000000 | 1000 | blendidf-0.1 | 0.5534 | 0.5134 | 0.8694 | 0.0725 | 78.45 | 156.43 |
+
+| size | index | build s | size MB |
+|---|---|---:|---:|
+| 10000 | porter-unicode61 | 0.1 | 6.32 |
+| 100000 | porter-unicode61 | 1.2 | 59.08 |
+| 1000000 | porter-unicode61 | 10.6 | 590.23 |
+
+### German
+
+| size | docs | queries | lane | nDCG@10 | MRR@10 | Recall@100 | P@10 | p50 ms | p95 ms |
+|---|---:|---:|---|---:|---:|---:|---:|---:|---:|
+| 10000 | 10000 | 1000 | and | 0.1853 | 0.1870 | 0.1888 | 0.0195 | 0.02 | 0.06 |
+| 10000 | 10000 | 1000 | or | 0.6022 | 0.5833 | 0.7255 | 0.0707 | 0.24 | 0.46 |
+| 10000 | 10000 | 1000 | or-stem | 0.6332 | 0.6082 | 0.7992 | 0.0761 | 0.36 | 0.97 |
+| 10000 | 10000 | 1000 | or-trigram | 0.6277 | 0.6074 | 0.7675 | 0.0737 | 1.30 | 3.04 |
+| 10000 | 10000 | 1000 | hybrid | 0.6036 | 0.5843 | 0.7107 | 0.0710 | 0.21 | 0.43 |
+| 10000 | 10000 | 1000 | hybrid-expanded | 0.6419 | 0.6185 | 0.7827 | 0.0767 | 0.31 | 0.93 |
+| 10000 | 10000 | 1000 | hybrid-trigram | 0.6163 | 0.5943 | 0.7505 | 0.0732 | 1.25 | 2.96 |
+| 100000 | 100000 | 1000 | and | 0.1783 | 0.1793 | 0.1888 | 0.0190 | 0.06 | 0.20 |
+| 100000 | 100000 | 1000 | or | 0.4948 | 0.4748 | 0.6730 | 0.0600 | 0.74 | 2.24 |
+| 100000 | 100000 | 1000 | or-stem | 0.4848 | 0.4548 | 0.7340 | 0.0625 | 1.08 | 4.28 |
+| 100000 | 100000 | 1000 | or-trigram | 0.5069 | 0.4855 | 0.6983 | 0.0617 | 7.99 | 21.30 |
+| 100000 | 100000 | 1000 | hybrid | 0.4954 | 0.4739 | 0.6505 | 0.0610 | 0.65 | 2.16 |
+| 100000 | 100000 | 1000 | hybrid-expanded | 0.5088 | 0.4842 | 0.7056 | 0.0636 | 1.06 | 4.21 |
+| 100000 | 100000 | 1000 | hybrid-trigram | 0.4957 | 0.4759 | 0.6683 | 0.0604 | 8.01 | 21.35 |
+| 1000000 | 1000000 | 1000 | and | 0.1508 | 0.1468 | 0.1838 | 0.0176 | 0.21 | 1.44 |
+| 1000000 | 1000000 | 1000 | or | 0.3493 | 0.3258 | 0.5719 | 0.0454 | 6.43 | 24.72 |
+| 1000000 | 1000000 | 1000 | or-stem | 0.3197 | 0.2960 | 0.6072 | 0.0425 | 9.43 | 37.21 |
+| 1000000 | 1000000 | 1000 | or-trigram | 0.3500 | 0.3283 | 0.5854 | 0.0450 | 67.69 | 188.39 |
+| 1000000 | 1000000 | 1000 | hybrid | 0.3504 | 0.3305 | 0.5403 | 0.0448 | 6.23 | 24.55 |
+| 1000000 | 1000000 | 1000 | hybrid-expanded | 0.3451 | 0.3238 | 0.5503 | 0.0445 | 9.32 | 37.14 |
+| 1000000 | 1000000 | 1000 | hybrid-trigram | 0.3421 | 0.3213 | 0.5542 | 0.0441 | 67.68 | 189.36 |
+
+| size | index | build s | size MB |
+|---|---|---:|---:|
+| 10000 | unicode61 | 0.1 | 7.22 |
+| 10000 | trigram | 0.3 | 20.38 |
+| 100000 | unicode61 | 1.1 | 67.47 |
+| 100000 | trigram | 3.9 | 188.87 |
+| 1000000 | unicode61 | 12.4 | 663.22 |
+| 1000000 | trigram | 51.5 | 1942.40 |
+
+### `results/compare-*.txt`
+
+de-10000.hybrid-expanded-vs-hybrid:
+```
+hybrid-expanded vs hybrid: W=114 T=787 L=99
+terms 1-3  n=790  W=89 T=620 L=81  hybrid-expanded: ndcg@10=0.6115 p@10=0.0725  hybrid: ndcg@10=0.5698 p@10=0.0668
+terms 4-6  n=205  W=25 T=162 L=18  hybrid-expanded: ndcg@10=0.7503 p@10=0.0922  hybrid: ndcg@10=0.7243 p@10=0.0863
+terms 7+  n=5  W=0 T=5 L=0  hybrid-expanded: ndcg@10=1.0000 p@10=0.1000  hybrid: ndcg@10=1.0000 p@10=0.1000
+```
+
+de-10000.hybrid-expanded-vs-or-trigram:
+```
+hybrid-expanded vs or-trigram: W=167 T=671 L=162
+terms 1-3  n=790  W=136 T=524 L=130  hybrid-expanded: ndcg@10=0.6115 p@10=0.0725  or-trigram: ndcg@10=0.5913 p@10=0.0696
+terms 4-6  n=205  W=31 T=142 L=32  hybrid-expanded: ndcg@10=0.7503 p@10=0.0922  or-trigram: ndcg@10=0.7589 p@10=0.0888
+terms 7+  n=5  W=0 T=5 L=0  hybrid-expanded: ndcg@10=1.0000 p@10=0.1000  or-trigram: ndcg@10=1.0000 p@10=0.1000
+```
+
+de-10000.hybrid-expanded-vs-or:
+```
+hybrid-expanded vs or: W=135 T=751 L=114
+terms 1-3  n=790  W=105 T=596 L=89  hybrid-expanded: ndcg@10=0.6115 p@10=0.0725  or: ndcg@10=0.5645 p@10=0.0663
+terms 4-6  n=205  W=30 T=150 L=25  hybrid-expanded: ndcg@10=0.7503 p@10=0.0922  or: ndcg@10=0.7377 p@10=0.0868
+terms 7+  n=5  W=0 T=5 L=0  hybrid-expanded: ndcg@10=1.0000 p@10=0.1000  or: ndcg@10=1.0000 p@10=0.1000
+```
+
+de-10000.hybrid-trigram-vs-or-trigram:
+```
+hybrid-trigram vs or-trigram: W=21 T=932 L=47
+terms 1-3  n=790  W=12 T=751 L=27  hybrid-trigram: ndcg@10=0.5846 p@10=0.0692  or-trigram: ndcg@10=0.5913 p@10=0.0696
+terms 4-6  n=205  W=9 T=176 L=20  hybrid-trigram: ndcg@10=0.7293 p@10=0.0878  or-trigram: ndcg@10=0.7589 p@10=0.0888
+terms 7+  n=5  W=0 T=5 L=0  hybrid-trigram: ndcg@10=1.0000 p@10=0.1000  or-trigram: ndcg@10=1.0000 p@10=0.1000
+```
+
+de-10000.hybrid-trigram-vs-or:
+```
+hybrid-trigram vs or: W=124 T=747 L=129
+terms 1-3  n=790  W=98 T=596 L=96  hybrid-trigram: ndcg@10=0.5846 p@10=0.0692  or: ndcg@10=0.5645 p@10=0.0663
+terms 4-6  n=205  W=26 T=146 L=33  hybrid-trigram: ndcg@10=0.7293 p@10=0.0878  or: ndcg@10=0.7377 p@10=0.0868
+terms 7+  n=5  W=0 T=5 L=0  hybrid-trigram: ndcg@10=1.0000 p@10=0.1000  or: ndcg@10=1.0000 p@10=0.1000
+```
+
+de-10000.hybrid-vs-or:
+```
+hybrid vs or: W=37 T=917 L=46
+terms 1-3  n=790  W=29 T=731 L=30  hybrid: ndcg@10=0.5698 p@10=0.0668  or: ndcg@10=0.5645 p@10=0.0663
+terms 4-6  n=205  W=8 T=181 L=16  hybrid: ndcg@10=0.7243 p@10=0.0863  or: ndcg@10=0.7377 p@10=0.0868
+terms 7+  n=5  W=0 T=5 L=0  hybrid: ndcg@10=1.0000 p@10=0.1000  or: ndcg@10=1.0000 p@10=0.1000
+```
+
+de-10000.or-stem-vs-or:
+```
+or-stem vs or: W=93 T=794 L=113
+terms 1-3  n=790  W=78 T=619 L=93  or-stem: ndcg@10=0.6060 p@10=0.0729  or: ndcg@10=0.5645 p@10=0.0663
+terms 4-6  n=205  W=15 T=170 L=20  or-stem: ndcg@10=0.7292 p@10=0.0878  or: ndcg@10=0.7377 p@10=0.0868
+terms 7+  n=5  W=0 T=5 L=0  or-stem: ndcg@10=1.0000 p@10=0.1000  or: ndcg@10=1.0000 p@10=0.1000
+```
+
+de-10000.or-trigram-vs-or:
+```
+or-trigram vs or: W=127 T=763 L=110
+terms 1-3  n=790  W=100 T=604 L=86  or-trigram: ndcg@10=0.5913 p@10=0.0696  or: ndcg@10=0.5645 p@10=0.0663
+terms 4-6  n=205  W=27 T=154 L=24  or-trigram: ndcg@10=0.7589 p@10=0.0888  or: ndcg@10=0.7377 p@10=0.0868
+terms 7+  n=5  W=0 T=5 L=0  or-trigram: ndcg@10=1.0000 p@10=0.1000  or: ndcg@10=1.0000 p@10=0.1000
+```
+
+de-10000.or-vs-and:
+```
+or vs and: W=487 T=512 L=1
+terms 1-3  n=790  W=328 T=461 L=1  or: ndcg@10=0.5645 p@10=0.0663  and: ndcg@10=0.2185 p@10=0.0230
+terms 4-6  n=205  W=155 T=50 L=0  or: ndcg@10=0.7377 p@10=0.0868  and: ndcg@10=0.0566 p@10=0.0059
+terms 7+  n=5  W=4 T=1 L=0  or: ndcg@10=1.0000 p@10=0.1000  and: ndcg@10=0.2000 p@10=0.0200
+```
+
+en-10000.blend-0.1-vs-or:
+```
+blend-0.1 vs or: W=6 T=974 L=20
+terms 1-3  n=451  W=1 T=438 L=12  blend-0.1: ndcg@10=0.8596 p@10=0.0976  or: ndcg@10=0.8645 p@10=0.0976
+terms 4-6  n=510  W=5 T=497 L=8  blend-0.1: ndcg@10=0.9128 p@10=0.1025  or: ndcg@10=0.9117 p@10=0.1027
+terms 7+  n=39  W=0 T=39 L=0  blend-0.1: ndcg@10=0.9423 p@10=0.1077  or: ndcg@10=0.9423 p@10=0.1077
+```
+
+en-10000.blendidf-0.1-vs-or:
+```
+blendidf-0.1 vs or: W=11 T=982 L=7
+terms 1-3  n=451  W=3 T=443 L=5  blendidf-0.1: ndcg@10=0.8637 p@10=0.0978  or: ndcg@10=0.8645 p@10=0.0976
+terms 4-6  n=510  W=7 T=501 L=2  blendidf-0.1: ndcg@10=0.9147 p@10=0.1027  or: ndcg@10=0.9117 p@10=0.1027
+terms 7+  n=39  W=1 T=38 L=0  blendidf-0.1: ndcg@10=0.9441 p@10=0.1077  or: ndcg@10=0.9423 p@10=0.1077
+```
+
+en-10000.hybrid-fts-k10-vs-or:
+```
+hybrid-fts-k10 vs or: W=18 T=859 L=123
+terms 1-3  n=451  W=3 T=386 L=62  hybrid-fts-k10: ndcg@10=0.7892 p@10=0.0907  or: ndcg@10=0.8645 p@10=0.0976
+terms 4-6  n=510  W=15 T=435 L=60  hybrid-fts-k10: ndcg@10=0.8692 p@10=0.1000  or: ndcg@10=0.9117 p@10=0.1027
+terms 7+  n=39  W=0 T=38 L=1  hybrid-fts-k10: ndcg@10=0.9344 p@10=0.1051  or: ndcg@10=0.9423 p@10=0.1077
+```
+
+en-10000.hybrid-fts-vs-or:
+```
+hybrid-fts vs or: W=18 T=858 L=124
+terms 1-3  n=451  W=3 T=386 L=62  hybrid-fts: ndcg@10=0.7885 p@10=0.0905  or: ndcg@10=0.8645 p@10=0.0976
+terms 4-6  n=510  W=15 T=434 L=61  hybrid-fts: ndcg@10=0.8675 p@10=0.0998  or: ndcg@10=0.9117 p@10=0.1027
+terms 7+  n=39  W=0 T=38 L=1  hybrid-fts: ndcg@10=0.9344 p@10=0.1051  or: ndcg@10=0.9423 p@10=0.1077
+```
+
+en-10000.hybrid-k10-vs-or:
+```
+hybrid-k10 vs or: W=41 T=774 L=185
+terms 1-3  n=451  W=15 T=338 L=98  hybrid-k10: ndcg@10=0.7355 p@10=0.0863  or: ndcg@10=0.8645 p@10=0.0976
+terms 4-6  n=510  W=25 T=402 L=83  hybrid-k10: ndcg@10=0.8307 p@10=0.0959  or: ndcg@10=0.9117 p@10=0.1027
+terms 7+  n=39  W=1 T=34 L=4  hybrid-k10: ndcg@10=0.8979 p@10=0.0974  or: ndcg@10=0.9423 p@10=0.1077
+```
+
+en-10000.hybrid-nofloor-k10-vs-or:
+```
+hybrid-nofloor-k10 vs or: W=41 T=781 L=178
+terms 1-3  n=451  W=15 T=345 L=91  hybrid-nofloor-k10: ndcg@10=0.7416 p@10=0.0863  or: ndcg@10=0.8645 p@10=0.0976
+terms 4-6  n=510  W=25 T=402 L=83  hybrid-nofloor-k10: ndcg@10=0.8307 p@10=0.0959  or: ndcg@10=0.9117 p@10=0.1027
+terms 7+  n=39  W=1 T=34 L=4  hybrid-nofloor-k10: ndcg@10=0.8979 p@10=0.0974  or: ndcg@10=0.9423 p@10=0.1077
+```
+
+en-10000.hybrid-substr-k10-vs-or:
+```
+hybrid-substr-k10 vs or: W=39 T=797 L=164
+terms 1-3  n=451  W=12 T=352 L=87  hybrid-substr-k10: ndcg@10=0.7618 p@10=0.0889  or: ndcg@10=0.8645 p@10=0.0976
+terms 4-6  n=510  W=24 T=410 L=76  hybrid-substr-k10: ndcg@10=0.8534 p@10=0.0986  or: ndcg@10=0.9117 p@10=0.1027
+terms 7+  n=39  W=3 T=35 L=1  hybrid-substr-k10: ndcg@10=0.9495 p@10=0.1026  or: ndcg@10=0.9423 p@10=0.1077
+```
+
+en-10000.hybrid-vs-or:
+```
+hybrid vs or: W=41 T=773 L=186
+terms 1-3  n=451  W=15 T=338 L=98  hybrid: ndcg@10=0.7319 p@10=0.0851  or: ndcg@10=0.8645 p@10=0.0976
+terms 4-6  n=510  W=25 T=401 L=84  hybrid: ndcg@10=0.8264 p@10=0.0947  or: ndcg@10=0.9117 p@10=0.1027
+terms 7+  n=39  W=1 T=34 L=4  hybrid: ndcg@10=0.8979 p@10=0.0974  or: ndcg@10=0.9423 p@10=0.1077
+```
+
+en-10000.or-vs-and:
+```
+or vs and: W=770 T=228 L=2
+terms 1-3  n=451  W=305 T=146 L=0  or: ndcg@10=0.8645 p@10=0.0976  and: ndcg@10=0.2638 p@10=0.0279
+terms 4-6  n=510  W=429 T=79 L=2  or: ndcg@10=0.9117 p@10=0.1027  and: ndcg@10=0.1279 p@10=0.0131
+terms 7+  n=39  W=36 T=3 L=0  or: ndcg@10=0.9423 p@10=0.1077  and: ndcg@10=0.0769 p@10=0.0077
+```
+
+de-100000.hybrid-expanded-vs-hybrid:
+```
+hybrid-expanded vs hybrid: W=113 T=773 L=114
+terms 1-3  n=790  W=89 T=604 L=97  hybrid-expanded: ndcg@10=0.4790 p@10=0.0599  hybrid: ndcg@10=0.4648 p@10=0.0573
+terms 4-6  n=205  W=24 T=164 L=17  hybrid-expanded: ndcg@10=0.6118 p@10=0.0771  hybrid: ndcg@10=0.6010 p@10=0.0741
+terms 7+  n=5  W=0 T=5 L=0  hybrid-expanded: ndcg@10=1.0000 p@10=0.1000  hybrid: ndcg@10=1.0000 p@10=0.1000
+```
+
+de-100000.hybrid-expanded-vs-or-trigram:
+```
+hybrid-expanded vs or-trigram: W=175 T=661 L=164
+terms 1-3  n=790  W=138 T=517 L=135  hybrid-expanded: ndcg@10=0.4790 p@10=0.0599  or-trigram: ndcg@10=0.4781 p@10=0.0582
+terms 4-6  n=205  W=37 T=139 L=29  hybrid-expanded: ndcg@10=0.6118 p@10=0.0771  or-trigram: ndcg@10=0.6060 p@10=0.0741
+terms 7+  n=5  W=0 T=5 L=0  hybrid-expanded: ndcg@10=1.0000 p@10=0.1000  or-trigram: ndcg@10=1.0000 p@10=0.1000
+```
+
+de-100000.hybrid-expanded-vs-or:
+```
+hybrid-expanded vs or: W=132 T=735 L=133
+terms 1-3  n=790  W=100 T=585 L=105  hybrid-expanded: ndcg@10=0.4790 p@10=0.0599  or: ndcg@10=0.4628 p@10=0.0562
+terms 4-6  n=205  W=32 T=145 L=28  hybrid-expanded: ndcg@10=0.6118 p@10=0.0771  or: ndcg@10=0.6059 p@10=0.0737
+terms 7+  n=5  W=0 T=5 L=0  hybrid-expanded: ndcg@10=1.0000 p@10=0.1000  or: ndcg@10=1.0000 p@10=0.1000
+```
+
+de-100000.hybrid-trigram-vs-or-trigram:
+```
+hybrid-trigram vs or-trigram: W=39 T=901 L=60
+terms 1-3  n=790  W=28 T=729 L=33  hybrid-trigram: ndcg@10=0.4722 p@10=0.0575  or-trigram: ndcg@10=0.4781 p@10=0.0582
+terms 4-6  n=205  W=11 T=167 L=27  hybrid-trigram: ndcg@10=0.5743 p@10=0.0707  or-trigram: ndcg@10=0.6060 p@10=0.0741
+terms 7+  n=5  W=0 T=5 L=0  hybrid-trigram: ndcg@10=1.0000 p@10=0.1000  or-trigram: ndcg@10=1.0000 p@10=0.1000
+```
+
+de-100000.hybrid-trigram-vs-or:
+```
+hybrid-trigram vs or: W=124 T=727 L=149
+terms 1-3  n=790  W=94 T=588 L=108  hybrid-trigram: ndcg@10=0.4722 p@10=0.0575  or: ndcg@10=0.4628 p@10=0.0562
+terms 4-6  n=205  W=30 T=134 L=41  hybrid-trigram: ndcg@10=0.5743 p@10=0.0707  or: ndcg@10=0.6059 p@10=0.0737
+terms 7+  n=5  W=0 T=5 L=0  hybrid-trigram: ndcg@10=1.0000 p@10=0.1000  or: ndcg@10=1.0000 p@10=0.1000
+```
+
+de-100000.hybrid-vs-or:
+```
+hybrid vs or: W=55 T=880 L=65
+terms 1-3  n=790  W=35 T=716 L=39  hybrid: ndcg@10=0.4648 p@10=0.0573  or: ndcg@10=0.4628 p@10=0.0562
+terms 4-6  n=205  W=20 T=159 L=26  hybrid: ndcg@10=0.6010 p@10=0.0741  or: ndcg@10=0.6059 p@10=0.0737
+terms 7+  n=5  W=0 T=5 L=0  hybrid: ndcg@10=1.0000 p@10=0.1000  or: ndcg@10=1.0000 p@10=0.1000
+```
+
+de-100000.or-stem-vs-or:
+```
+or-stem vs or: W=82 T=769 L=149
+terms 1-3  n=790  W=71 T=596 L=123  or-stem: ndcg@10=0.4556 p@10=0.0591  or: ndcg@10=0.4628 p@10=0.0562
+terms 4-6  n=205  W=11 T=168 L=26  or-stem: ndcg@10=0.5846 p@10=0.0746  or: ndcg@10=0.6059 p@10=0.0737
+terms 7+  n=5  W=0 T=5 L=0  or-stem: ndcg@10=1.0000 p@10=0.1000  or: ndcg@10=1.0000 p@10=0.1000
+```
+
+de-100000.or-trigram-vs-or:
+```
+or-trigram vs or: W=122 T=748 L=130
+terms 1-3  n=790  W=92 T=601 L=97  or-trigram: ndcg@10=0.4781 p@10=0.0582  or: ndcg@10=0.4628 p@10=0.0562
+terms 4-6  n=205  W=30 T=142 L=33  or-trigram: ndcg@10=0.6060 p@10=0.0741  or: ndcg@10=0.6059 p@10=0.0737
+terms 7+  n=5  W=0 T=5 L=0  or-trigram: ndcg@10=1.0000 p@10=0.1000  or: ndcg@10=1.0000 p@10=0.1000
+```
+
+de-100000.or-vs-and:
+```
+or vs and: W=395 T=602 L=3
+terms 1-3  n=790  W=258 T=529 L=3  or: ndcg@10=0.4628 p@10=0.0562  and: ndcg@10=0.2097 p@10=0.0224
+terms 4-6  n=205  W=133 T=72 L=0  or: ndcg@10=0.6059 p@10=0.0737  and: ndcg@10=0.0566 p@10=0.0059
+terms 7+  n=5  W=4 T=1 L=0  or: ndcg@10=1.0000 p@10=0.1000  and: ndcg@10=0.2000 p@10=0.0200
+```
+
+en-100000.blend-0.1-vs-or:
+```
+blend-0.1 vs or: W=21 T=946 L=33
+terms 1-3  n=451  W=7 T=426 L=18  blend-0.1: ndcg@10=0.7364 p@10=0.0871  or: ndcg@10=0.7399 p@10=0.0878
+terms 4-6  n=510  W=14 T=482 L=14  blend-0.1: ndcg@10=0.7906 p@10=0.0931  or: ndcg@10=0.7926 p@10=0.0939
+terms 7+  n=39  W=0 T=38 L=1  blend-0.1: ndcg@10=0.8335 p@10=0.0974  or: ndcg@10=0.8368 p@10=0.0974
+```
+
+en-100000.blendidf-0.1-vs-or:
+```
+blendidf-0.1 vs or: W=23 T=958 L=19
+terms 1-3  n=451  W=5 T=437 L=9  blendidf-0.1: ndcg@10=0.7399 p@10=0.0876  or: ndcg@10=0.7399 p@10=0.0878
+terms 4-6  n=510  W=17 T=483 L=10  blendidf-0.1: ndcg@10=0.7943 p@10=0.0935  or: ndcg@10=0.7926 p@10=0.0939
+terms 7+  n=39  W=1 T=38 L=0  blendidf-0.1: ndcg@10=0.8380 p@10=0.0974  or: ndcg@10=0.8368 p@10=0.0974
+```
+
+en-100000.hybrid-fts-k10-vs-or:
+```
+hybrid-fts-k10 vs or: W=39 T=784 L=177
+terms 1-3  n=451  W=12 T=368 L=71  hybrid-fts-k10: ndcg@10=0.6713 p@10=0.0789  or: ndcg@10=0.7399 p@10=0.0878
+terms 4-6  n=510  W=25 T=384 L=101  hybrid-fts-k10: ndcg@10=0.7162 p@10=0.0876  or: ndcg@10=0.7926 p@10=0.0939
+terms 7+  n=39  W=2 T=32 L=5  hybrid-fts-k10: ndcg@10=0.8108 p@10=0.0974  or: ndcg@10=0.8368 p@10=0.0974
+```
+
+en-100000.hybrid-fts-vs-or:
+```
+hybrid-fts vs or: W=39 T=782 L=179
+terms 1-3  n=451  W=12 T=368 L=71  hybrid-fts: ndcg@10=0.6712 p@10=0.0789  or: ndcg@10=0.7399 p@10=0.0878
+terms 4-6  n=510  W=25 T=382 L=103  hybrid-fts: ndcg@10=0.7102 p@10=0.0865  or: ndcg@10=0.7926 p@10=0.0939
+terms 7+  n=39  W=2 T=32 L=5  hybrid-fts: ndcg@10=0.8061 p@10=0.0949  or: ndcg@10=0.8368 p@10=0.0974
+```
+
+en-100000.hybrid-k10-vs-or:
+```
+hybrid-k10 vs or: W=78 T=708 L=214
+terms 1-3  n=451  W=30 T=317 L=104  hybrid-k10: ndcg@10=0.6300 p@10=0.0761  or: ndcg@10=0.7399 p@10=0.0878
+terms 4-6  n=510  W=47 T=361 L=102  hybrid-k10: ndcg@10=0.7074 p@10=0.0867  or: ndcg@10=0.7926 p@10=0.0939
+terms 7+  n=39  W=1 T=30 L=8  hybrid-k10: ndcg@10=0.7528 p@10=0.0872  or: ndcg@10=0.8368 p@10=0.0974
+```
+
+en-100000.hybrid-nofloor-k10-vs-or:
+```
+hybrid-nofloor-k10 vs or: W=82 T=714 L=204
+terms 1-3  n=451  W=33 T=323 L=95  hybrid-nofloor-k10: ndcg@10=0.6382 p@10=0.0763  or: ndcg@10=0.7399 p@10=0.0878
+terms 4-6  n=510  W=48 T=361 L=101  hybrid-nofloor-k10: ndcg@10=0.7096 p@10=0.0867  or: ndcg@10=0.7926 p@10=0.0939
+terms 7+  n=39  W=1 T=30 L=8  hybrid-nofloor-k10: ndcg@10=0.7528 p@10=0.0872  or: ndcg@10=0.8368 p@10=0.0974
+```
+
+en-100000.hybrid-substr-k10-vs-or:
+```
+hybrid-substr-k10 vs or: W=64 T=735 L=201
+terms 1-3  n=451  W=24 T=340 L=87  hybrid-substr-k10: ndcg@10=0.6613 p@10=0.0787  or: ndcg@10=0.7399 p@10=0.0878
+terms 4-6  n=510  W=37 T=364 L=109  hybrid-substr-k10: ndcg@10=0.7193 p@10=0.0894  or: ndcg@10=0.7926 p@10=0.0939
+terms 7+  n=39  W=3 T=31 L=5  hybrid-substr-k10: ndcg@10=0.7958 p@10=0.0923  or: ndcg@10=0.8368 p@10=0.0974
+```
+
+en-100000.hybrid-vs-or:
+```
+hybrid vs or: W=76 T=698 L=226
+terms 1-3  n=451  W=28 T=318 L=105  hybrid: ndcg@10=0.6202 p@10=0.0729  or: ndcg@10=0.7399 p@10=0.0878
+terms 4-6  n=510  W=47 T=350 L=113  hybrid: ndcg@10=0.6969 p@10=0.0851  or: ndcg@10=0.7926 p@10=0.0939
+terms 7+  n=39  W=1 T=30 L=8  hybrid: ndcg@10=0.7503 p@10=0.0872  or: ndcg@10=0.8368 p@10=0.0974
+```
+
+en-100000.or-vs-and:
+```
+or vs and: W=692 T=303 L=5
+terms 1-3  n=451  W=266 T=183 L=2  or: ndcg@10=0.7399 p@10=0.0878  and: ndcg@10=0.2579 p@10=0.0273
+terms 4-6  n=510  W=393 T=114 L=3  or: ndcg@10=0.7926 p@10=0.0939  and: ndcg@10=0.1269 p@10=0.0131
+terms 7+  n=39  W=33 T=6 L=0  or: ndcg@10=0.8368 p@10=0.0974  and: ndcg@10=0.0769 p@10=0.0077
+```
+
+de-1000000.hybrid-expanded-vs-hybrid:
+```
+hybrid-expanded vs hybrid: W=84 T=810 L=106
+terms 1-3  n=790  W=63 T=644 L=83  hybrid-expanded: ndcg@10=0.3195 p@10=0.0413  hybrid: ndcg@10=0.3230 p@10=0.0414
+terms 4-6  n=205  W=21 T=163 L=21  hybrid-expanded: ndcg@10=0.4315 p@10=0.0556  hybrid: ndcg@10=0.4403 p@10=0.0566
+terms 7+  n=5  W=0 T=3 L=2  hybrid-expanded: ndcg@10=0.8524 p@10=0.1000  hybrid: ndcg@10=1.0000 p@10=0.1000
+```
+
+de-1000000.hybrid-expanded-vs-or-trigram:
+```
+hybrid-expanded vs or-trigram: W=151 T=686 L=163
+terms 1-3  n=790  W=116 T=548 L=126  hybrid-expanded: ndcg@10=0.3195 p@10=0.0413  or-trigram: ndcg@10=0.3229 p@10=0.0419
+terms 4-6  n=205  W=35 T=134 L=36  hybrid-expanded: ndcg@10=0.4315 p@10=0.0556  or-trigram: ndcg@10=0.4405 p@10=0.0556
+terms 7+  n=5  W=0 T=4 L=1  hybrid-expanded: ndcg@10=0.8524 p@10=0.1000  or-trigram: ndcg@10=0.9262 p@10=0.1000
+```
+
+de-1000000.hybrid-expanded-vs-or:
+```
+hybrid-expanded vs or: W=103 T=770 L=127
+terms 1-3  n=790  W=70 T=625 L=95  hybrid-expanded: ndcg@10=0.3195 p@10=0.0413  or: ndcg@10=0.3229 p@10=0.0419
+terms 4-6  n=205  W=33 T=141 L=31  hybrid-expanded: ndcg@10=0.4315 p@10=0.0556  or: ndcg@10=0.4372 p@10=0.0576
+terms 7+  n=5  W=0 T=4 L=1  hybrid-expanded: ndcg@10=0.8524 p@10=0.1000  or: ndcg@10=0.9262 p@10=0.1000
+```
+
+de-1000000.hybrid-trigram-vs-or-trigram:
+```
+hybrid-trigram vs or-trigram: W=50 T=888 L=62
+terms 1-3  n=790  W=28 T=726 L=36  hybrid-trigram: ndcg@10=0.3198 p@10=0.0413  or-trigram: ndcg@10=0.3229 p@10=0.0419
+terms 4-6  n=205  W=21 T=158 L=26  hybrid-trigram: ndcg@10=0.4119 p@10=0.0537  or-trigram: ndcg@10=0.4405 p@10=0.0556
+terms 7+  n=5  W=1 T=4 L=0  hybrid-trigram: ndcg@10=1.0000 p@10=0.1000  or-trigram: ndcg@10=0.9262 p@10=0.1000
+```
+
+de-1000000.hybrid-trigram-vs-or:
+```
+hybrid-trigram vs or: W=116 T=733 L=151
+terms 1-3  n=790  W=84 T=602 L=104  hybrid-trigram: ndcg@10=0.3198 p@10=0.0413  or: ndcg@10=0.3229 p@10=0.0419
+terms 4-6  n=205  W=31 T=127 L=47  hybrid-trigram: ndcg@10=0.4119 p@10=0.0537  or: ndcg@10=0.4372 p@10=0.0576
+terms 7+  n=5  W=1 T=4 L=0  hybrid-trigram: ndcg@10=1.0000 p@10=0.1000  or: ndcg@10=0.9262 p@10=0.1000
+```
+
+de-1000000.hybrid-vs-or:
+```
+hybrid vs or: W=53 T=893 L=54
+terms 1-3  n=790  W=27 T=733 L=30  hybrid: ndcg@10=0.3230 p@10=0.0414  or: ndcg@10=0.3229 p@10=0.0419
+terms 4-6  n=205  W=25 T=156 L=24  hybrid: ndcg@10=0.4403 p@10=0.0566  or: ndcg@10=0.4372 p@10=0.0576
+terms 7+  n=5  W=1 T=4 L=0  hybrid: ndcg@10=1.0000 p@10=0.1000  or: ndcg@10=0.9262 p@10=0.1000
+```
+
+de-1000000.or-stem-vs-or:
+```
+or-stem vs or: W=59 T=791 L=150
+terms 1-3  n=790  W=50 T=631 L=109  or-stem: ndcg@10=0.2981 p@10=0.0396  or: ndcg@10=0.3229 p@10=0.0419
+terms 4-6  n=205  W=9 T=155 L=41  or-stem: ndcg@10=0.3885 p@10=0.0522  or: ndcg@10=0.4372 p@10=0.0576
+terms 7+  n=5  W=0 T=5 L=0  or-stem: ndcg@10=0.9262 p@10=0.1000  or: ndcg@10=0.9262 p@10=0.1000
+```
+
+de-1000000.or-trigram-vs-or:
+```
+or-trigram vs or: W=120 T=748 L=132
+terms 1-3  n=790  W=87 T=609 L=94  or-trigram: ndcg@10=0.3229 p@10=0.0419  or: ndcg@10=0.3229 p@10=0.0419
+terms 4-6  n=205  W=33 T=134 L=38  or-trigram: ndcg@10=0.4405 p@10=0.0556  or: ndcg@10=0.4372 p@10=0.0576
+terms 7+  n=5  W=0 T=5 L=0  or-trigram: ndcg@10=0.9262 p@10=0.1000  or: ndcg@10=0.9262 p@10=0.1000
+```
+
+de-1000000.or-vs-and:
+```
+or vs and: W=274 T=720 L=6
+terms 1-3  n=790  W=165 T=620 L=5  or: ndcg@10=0.3229 p@10=0.0419  and: ndcg@10=0.1754 p@10=0.0206
+terms 4-6  n=205  W=105 T=99 L=1  or: ndcg@10=0.4372 p@10=0.0576  and: ndcg@10=0.0548 p@10=0.0059
+terms 7+  n=5  W=4 T=1 L=0  or: ndcg@10=0.9262 p@10=0.1000  and: ndcg@10=0.2000 p@10=0.0200
+```
+
+en-1000000.blend-0.1-vs-or:
+```
+blend-0.1 vs or: W=40 T=921 L=39
+terms 1-3  n=451  W=14 T=422 L=15  blend-0.1: ndcg@10=0.5294 p@10=0.0694  or: ndcg@10=0.5286 p@10=0.0687
+terms 4-6  n=510  W=25 T=463 L=22  blend-0.1: ndcg@10=0.5595 p@10=0.0739  or: ndcg@10=0.5620 p@10=0.0745
+terms 7+  n=39  W=1 T=36 L=2  blend-0.1: ndcg@10=0.6402 p@10=0.0744  or: ndcg@10=0.6342 p@10=0.0718
+```
+
+en-1000000.blendidf-0.1-vs-or:
+```
+blendidf-0.1 vs or: W=45 T=932 L=23
+terms 1-3  n=451  W=13 T=428 L=10  blendidf-0.1: ndcg@10=0.5303 p@10=0.0692  or: ndcg@10=0.5286 p@10=0.0687
+terms 4-6  n=510  W=30 T=468 L=12  blendidf-0.1: ndcg@10=0.5666 p@10=0.0751  or: ndcg@10=0.5620 p@10=0.0745
+terms 7+  n=39  W=2 T=36 L=1  blendidf-0.1: ndcg@10=0.6479 p@10=0.0769  or: ndcg@10=0.6342 p@10=0.0718
+```
+
+en-1000000.hybrid-fts-k10-vs-or:
+```
+hybrid-fts-k10 vs or: W=75 T=736 L=189
+terms 1-3  n=451  W=22 T=348 L=81  hybrid-fts-k10: ndcg@10=0.4751 p@10=0.0619  or: ndcg@10=0.5286 p@10=0.0687
+terms 4-6  n=510  W=48 T=358 L=104  hybrid-fts-k10: ndcg@10=0.5086 p@10=0.0673  or: ndcg@10=0.5620 p@10=0.0745
+terms 7+  n=39  W=5 T=30 L=4  hybrid-fts-k10: ndcg@10=0.6512 p@10=0.0744  or: ndcg@10=0.6342 p@10=0.0718
+```
+
+en-1000000.hybrid-fts-vs-or:
+```
+hybrid-fts vs or: W=73 T=734 L=193
+terms 1-3  n=451  W=22 T=348 L=81  hybrid-fts: ndcg@10=0.4751 p@10=0.0619  or: ndcg@10=0.5286 p@10=0.0687
+terms 4-6  n=510  W=47 T=355 L=108  hybrid-fts: ndcg@10=0.5027 p@10=0.0663  or: ndcg@10=0.5620 p@10=0.0745
+terms 7+  n=39  W=4 T=31 L=4  hybrid-fts: ndcg@10=0.6444 p@10=0.0718  or: ndcg@10=0.6342 p@10=0.0718
+```
+
+en-1000000.hybrid-k10-vs-or:
+```
+hybrid-k10 vs or: W=125 T=653 L=222
+terms 1-3  n=451  W=49 T=304 L=98  hybrid-k10: ndcg@10=0.4572 p@10=0.0590  or: ndcg@10=0.5286 p@10=0.0687
+terms 4-6  n=510  W=71 T=321 L=118  hybrid-k10: ndcg@10=0.4987 p@10=0.0663  or: ndcg@10=0.5620 p@10=0.0745
+terms 7+  n=39  W=5 T=28 L=6  hybrid-k10: ndcg@10=0.6159 p@10=0.0718  or: ndcg@10=0.6342 p@10=0.0718
+```
+
+en-1000000.hybrid-nofloor-k10-vs-or:
+```
+hybrid-nofloor-k10 vs or: W=125 T=676 L=199
+terms 1-3  n=451  W=48 T=321 L=82  hybrid-nofloor-k10: ndcg@10=0.4747 p@10=0.0603  or: ndcg@10=0.5286 p@10=0.0687
+terms 4-6  n=510  W=72 T=327 L=111  hybrid-nofloor-k10: ndcg@10=0.5025 p@10=0.0665  or: ndcg@10=0.5620 p@10=0.0745
+terms 7+  n=39  W=5 T=28 L=6  hybrid-nofloor-k10: ndcg@10=0.6159 p@10=0.0718  or: ndcg@10=0.6342 p@10=0.0718
+```
+
+en-1000000.hybrid-substr-k10-vs-or:
+```
+hybrid-substr-k10 vs or: W=107 T=714 L=179
+terms 1-3  n=451  W=38 T=342 L=71  hybrid-substr-k10: ndcg@10=0.4932 p@10=0.0623  or: ndcg@10=0.5286 p@10=0.0687
+terms 4-6  n=510  W=65 T=343 L=102  hybrid-substr-k10: ndcg@10=0.5176 p@10=0.0680  or: ndcg@10=0.5620 p@10=0.0745
+terms 7+  n=39  W=4 T=29 L=6  hybrid-substr-k10: ndcg@10=0.6420 p@10=0.0718  or: ndcg@10=0.6342 p@10=0.0718
+```
+
+en-1000000.hybrid-vs-or:
+```
+hybrid vs or: W=116 T=652 L=232
+terms 1-3  n=451  W=45 T=305 L=101  hybrid: ndcg@10=0.4534 p@10=0.0576  or: ndcg@10=0.5286 p@10=0.0687
+terms 4-6  n=510  W=67 T=318 L=125  hybrid: ndcg@10=0.4830 p@10=0.0627  or: ndcg@10=0.5620 p@10=0.0745
+terms 7+  n=39  W=4 T=29 L=6  hybrid: ndcg@10=0.6035 p@10=0.0667  or: ndcg@10=0.6342 p@10=0.0718
+```
+
+en-1000000.or-vs-and:
+```
+or vs and: W=518 T=465 L=17
+terms 1-3  n=451  W=191 T=252 L=8  or: ndcg@10=0.5286 p@10=0.0687  and: ndcg@10=0.2319 p@10=0.0259
+terms 4-6  n=510  W=302 T=199 L=9  or: ndcg@10=0.5620 p@10=0.0745  and: ndcg@10=0.1241 p@10=0.0131
+terms 7+  n=39  W=25 T=14 L=0  or: ndcg@10=0.6342 p@10=0.0718  and: ndcg@10=0.0769 p@10=0.0077
+```
+
+### Facts (no recommendation)
+
+English, ΔnDCG@10 / ΔP@10 vs `or`; p95 100 000 → 1 000 000
+| lane | 10000 | 100000 | 1000000 | p95 100 000 → 1 000 000 |
+|---|---:|---:|---:|---:|
+| and | -0.7044 / -0.0810 | -0.5864 / -0.0720 | -0.3788 / -0.0531 | 0.62 → 5.39 ms (8.7×) |
+| or | reference | reference | reference | 9.99 → 123.10 ms (12.3×) |
+| hybrid | -0.1050 / -0.0101 | -0.1061 / -0.0116 | -0.0753 / -0.0112 | 15.68 → 126.25 ms (8.1×) |
+| hybrid-fts | -0.0571 / -0.0048 | -0.0742 / -0.0079 | -0.0539 / -0.0073 | 68.58 → 163.67 ms (2.4×) |
+| hybrid-k10 | -0.1012 / -0.0090 | -0.0962 / -0.0094 | -0.0652 / -0.0086 | 10.36 → 117.24 ms (11.3×) |
+| hybrid-nofloor-k10 | -0.0985 / -0.0090 | -0.0914 / -0.0093 | -0.0553 / -0.0079 | 9.85 → 128.87 ms (13.1×) |
+| hybrid-fts-k10 | -0.0559 / -0.0046 | -0.0709 / -0.0072 | -0.0506 / -0.0067 | 14.46 → 119.85 ms (8.3×) |
+| hybrid-substr-k10 | -0.0758 / -0.0062 | -0.0744 / -0.0066 | -0.0383 / -0.0062 | 9.24 → 110.68 ms (12.0×) |
+| blend-0.1 | -0.0016 / -0.0001 | -0.0027 / -0.0007 | -0.0006 / +0.0001 | 67.80 → 157.46 ms (2.3×) |
+| blendidf-0.1 | +0.0012 / +0.0001 | +0.0010 / -0.0003 | +0.0037 / +0.0007 | 67.07 → 156.43 ms (2.3×) |
+
+German (`STOPWORDS_DE`), ΔnDCG@10 / ΔP@10 vs `or`; p95 100 000 → 1 000 000
+| lane | 10000 | 100000 | 1000000 | p95 100 000 → 1 000 000 |
+|---|---:|---:|---:|---:|
+| and | -0.4169 / -0.0512 | -0.3165 / -0.0410 | -0.1985 / -0.0278 | 0.20 → 1.44 ms (7.2×) |
+| or | reference | reference | reference | 2.24 → 24.72 ms (11.0×) |
+| or-stem | +0.0310 / +0.0054 | -0.0100 / +0.0025 | -0.0296 / -0.0029 | 4.28 → 37.21 ms (8.7×) |
+| or-trigram | +0.0255 / +0.0030 | +0.0121 / +0.0017 | +0.0007 / -0.0004 | 21.30 → 188.39 ms (8.8×) |
+| hybrid | +0.0014 / +0.0003 | +0.0006 / +0.0010 | +0.0011 / -0.0006 | 2.16 → 24.55 ms (11.4×) |
+| hybrid-expanded | +0.0397 / +0.0060 | +0.0140 / +0.0036 | -0.0042 / -0.0009 | 4.21 → 37.14 ms (8.8×) |
+| hybrid-trigram | +0.0141 / +0.0025 | +0.0009 / +0.0004 | -0.0072 / -0.0013 | 21.35 → 189.36 ms (8.9×) |
+
+Index size 100 000 → 1 000 000: English porter-unicode61 59.08 → 590.23 MB (10.0×), German unicode61 67.47 → 663.22 MB (9.8×), trigram 188.87 → 1942.40 MB (10.3×); trigram/unicode61 at 1 000 000: 2.93×.
+
+ΔnDCG@10 vs `or-trigram` (German): hybrid-expanded +0.0142, +0.0019, -0.0049; hybrid-trigram -0.0114, -0.0112, -0.0079 (10 000, 100 000, 1 000 000).
