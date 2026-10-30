@@ -1111,8 +1111,10 @@ stemmer lanes get the query without those words); `--stopwords stemmer`
 (default) is the list of T16–T19.
 
 Stemmer: `17e64135d75c6948baa113479e80548cc93ba74c`. Machine: `nproc` 20,
-121 GiB RAM, Node v24.22.1, SQLite 3.53.4. A vLLM model ran in parallel on the
-GPU (shared memory). The two scale runs (old and new list) ran in parallel,
+121 GiB RAM, Node v24.22.1, SQLite 3.53.4. A local LLM server ran on the same
+machine (shared CPU/GPU memory): a vLLM model, and from 13:36 another engine
+that loads its model at start; only the old-list run of `hybrid-trigram` at
+1 000 000 (13:34–13:38) overlapped with that start. The two scale runs (old and new list) ran in parallel,
 each pinned to its own core (`taskset`); the GermanDPR/GovService runs ran on
 a third core at the same time. Latencies are from one loaded machine.
 
