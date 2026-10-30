@@ -5,6 +5,22 @@ Behavior changes to public functions are marked **Behavior change**.
 
 ## Unreleased
 
+### Changed: E5 per size class, German recommendation for small corpora (T23, docs only)
+- E5 is applied per size class: small below 50 000 documents, medium 50 000
+  to 500 000, large above. Re-assessed on the existing measurements.
+- German below 50 000 documents: OR on a `trigram remove_diacritics 1` index
+  with `STOPWORDS_DE` (+0.0255 to +0.0543 nDCG@10 on three small test sets),
+  provisional until a further small test set confirms it. From 50 000
+  documents on and for English in every class: unchanged.
+
+### Changed: E5 latency criterion with a 10 ms floor (T22, docs only)
+- The latency part of E5 is now "p95 at most 3× that of `or` or at most
+  10 ms more, whichever is larger, same run". The ratio alone let
+  sub-millisecond differences decide on small corpora. Re-assessed on the
+  T21 measurements: no recommendation changes; the German extensions now
+  fail on nDCG@10 at 1 000 000 passages (and `or-trigram` on latency from
+  100 000 on). `docs/ZIEL.md`, README, `docs/VALIDATION.md` (T22).
+
 ### Behavior change: STOPWORDS_DE complete (T21), German recommendation is plain OR
 - **Behavior change:** `STOPWORDS_DE` grows from 94 to 259 entries: the
   Snowball German stop word list (231 words, BSD-3-Clause) and the spellings
@@ -14,8 +30,8 @@ Behavior changes to public functions are marked **Behavior change**.
   266.96 to 24.72 ms; nDCG@10 dropped on no German dataset (T21).
 - German recommendation: OR on `unicode61` with `STOPWORDS_DE`. With the
   complete list no extension meets E5 on every untuned dataset; the trigram
-  index (recommended since T16) exceeds 3× the p95 of `or` on GermanDPR and
-  mMARCO-de and gains +0.0007 nDCG@10 at 1 000 000 passages. README, ZIEL
+  index (recommended since T16) gains +0.0007 nDCG@10 at 1 000 000 passages
+  and exceeds its latency budget from 100 000 passages on (T22). README, ZIEL
   and `docs/VALIDATION.md` (T21) updated.
 - `scripts/beir-bench.mjs --stopwords stemmer|lib` (German only; default
   `stemmer` = the list of T16–T19, output unchanged). With `lib` the stemmer

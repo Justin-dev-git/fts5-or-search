@@ -30,7 +30,24 @@ nDCG@10, MRR@10, Recall@100, Latenz p50/p95.
 | E2 | `hybrid` nDCG@10 ≥ `or` auf beiden Datensätzen | Das Coverage-Re-Rank bringt einen Mehrwert (Kernaussage) |
 | E3 | `hybrid` Recall@100 ≥ `and` Recall@100 | Der AND-Floor hält auf echten Daten |
 | E4 | `hybrid` p95 ≤ 50 ms pro Anfrage | Interaktiv bei diesen Korpusgrößen |
-| E5 | Eine Erweiterung gegenüber `or` wird nur übernommen, wenn sie auf einem **nicht abgestimmten** Datensatz bei nDCG@10 mindestens +0.01 erreicht, bei P@10 nicht schlechter ist, höchstens die 3-fache p95-Latenz von `or` hat und höchstens etwa 50 Zeilen Library-Code kostet. Gibt es mehrere nicht abgestimmte Datensätze, muss E5 auf jedem davon halten | Nutzen pro Aufwand |
+| E5 | Eine Erweiterung gegenüber `or` wird nur übernommen, wenn sie auf einem **nicht abgestimmten** Datensatz bei nDCG@10 mindestens +0.01 erreicht, bei P@10 nicht schlechter ist, bei der p95-Latenz höchstens das 3-Fache von `or` **oder** höchstens 10 ms mehr als `or` braucht (es gilt das Größere; beide im selben Lauf gemessen) und höchstens etwa 50 Zeilen Library-Code kostet. E5 gilt **je Größenklasse** (seit T23): klein unter 50 000 Dokumente, mittel 50 000 bis 500 000, groß darüber. Eine Erweiterung wird für eine Klasse empfohlen, wenn sie E5 auf jedem nicht abgestimmten Testsatz dieser Klasse erfüllt. Wird ein Datensatz in mehreren Größen gemessen, zählt jede Größe als eigener Testsatz ihrer Klasse | Nutzen pro Aufwand |
+
+**Änderung an E5 (30.10.2026, T22, im Auftrag des Owners):** Bis T21 galt
+für die Latenz nur das 3-Fache von `or`. Bei kleinen Korpora entschieden damit
+Unterschiede von Bruchteilen einer Millisekunde: Auf GovService liegt die
+p95 von `or` bei 0.24 ms, die Grenze also bei 0.72 ms. Solche Unterschiede
+sind weder spürbar noch zwischen zwei Läufen stabil. Die Untergrenze von
+10 ms gilt rückwirkend für alle Messungen. Sie macht E5 nur nachsichtiger;
+keine Empfehlung ändert sich dadurch (`docs/VALIDATION.md`, T22).
+
+**Änderung an E5 (30.10.2026, T23, im Auftrag des Owners):** Bis T22
+musste eine Erweiterung auf allen Testsätzen gleich welcher Größe halten.
+Die Messungen bis 1 000 000 Abschnitte zeigen aber, dass Trigram und Stemmer
+bei kleinen Korpora deutlich helfen und bei großen nicht. Deshalb wird je
+Größenklasse entschieden. **Vorläufig:** Die Klassengrenzen wurden erst nach
+den Messungen festgelegt. Bestätigt ist eine Klassenempfehlung erst mit
+einem weiteren, unabhängigen Testsatz in dieser Klasse (für Deutsch „mittel“
+z. B. GerDaLIR).
 
 ## Abbruch- und Umlenkkriterien (Vorschlag)
 - **E2 scheitert auf beiden Datensätzen:** Das Coverage-Re-Rank fällt aus der
@@ -167,4 +184,35 @@ Alle Zahlen stammen aus `docs/VALIDATION.md`, Abschnitt T21.
 - **Empfehlung Deutsch:** OR auf `unicode61` mit `STOPWORDS_DE`. Trigram
   bleibt eine Option für kleine Korpora mit vielen Komposita, kostet aber
   2.93-mal den Index und ein Mehrfaches der Latenz.
+
+## Ergebnis nach T22 (30.10.2026)
+- Mit der 10-ms-Untergrenze scheitern die deutschen Erweiterungen an der
+  Qualität bei großem Korpus, nicht mehr an Millisekunden: Bei 1 000 000
+  Abschnitten von mMARCO-de liegt jede unter +0.01 nDCG@10. `or-trigram`
+  überschreitet zusätzlich ab 100 000 Abschnitten das Latenzbudget.
+- `hybrid-expanded` erfüllt die messbaren Teile von E5 auf GermanDPR,
+  GovService, mMARCO-de 10 000 und 100 000 und scheitert bei 1 000 000
+  (−0.0042). Es braucht außerdem german-fts5-stemmer als Zusatzpaket.
+- Englisch: Jede Erweiterung scheitert schon an nDCG@10; die Änderung wirkt
+  dort nicht.
+- Die Empfehlung bleibt für beide Sprachen OR mit FTS5-BM25.
+
+## Ergebnis nach T23 (30.10.2026, vorläufig)
+Alle Zahlen stammen aus `docs/VALIDATION.md`, Abschnitt T23.
+
+- **Englisch:** OR auf `porter unicode61` in jeder Größenklasse. Keine
+  Erweiterung erreicht irgendwo +0.01 (beste: `blendidf-0.1` +0.0037 bei
+  1 000 000).
+- **Deutsch, klein (unter 50 000 Dokumente):** OR auf einem Trigram-Index mit
+  `STOPWORDS_DE`. `or-trigram` erfüllt E5 auf GermanDPR, GovService und
+  mMARCO-de 10 000 (+0.0543, +0.0349, +0.0255) und braucht keinen
+  Library-Code. `hybrid-expanded` und `hybrid-trigram` erfüllen es auch,
+  sind aber nicht durchgehend besser oder brauchen den Stemmer als
+  Zusatzpaket.
+- **Deutsch, mittel und groß:** OR auf `unicode61` mit `STOPWORDS_DE`.
+  Bei 100 000 erfüllt nur `hybrid-expanded` E5, auf einem Testsatz und mit
+  Zusatzpaket; bei 1 000 000 keine Erweiterung.
+- **Offen:** je Klasse ein weiterer, unabhängiger Testsatz (für „mittel“ z. B.
+  GerDaLIR). Wächst ein deutscher Korpus über 50 000 Dokumente, braucht er
+  einen neuen Index.
 
