@@ -29,7 +29,9 @@
 //   --adaptive-tau <n,...>  German only (T24): add the lanes adaptive-trigram-<n>
 //           and adaptive-stem-<n> for each n. A query whose plain OR match hits
 //           at most n documents of the unicode61 index takes or-trigram or
-//           hybrid-expanded, every other query plain `or`.
+//           hybrid-expanded, every other query plain `or`. T25: also
+//           adaptive-search-<n>, the library's adaptiveSearch with the stemmer
+//           as expansion (returns 10 rows: only the @10 metrics are comparable).
 //   --json  additionally prints one JSON line as the LAST output line:
 //           { dataset, docs, queries, lanes: { <lane>:
 //             { ndcg10, mrr10, recall100, p50ms, p95ms } } }
@@ -43,7 +45,7 @@ import { pathToFileURL } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { performance } from 'node:perf_hooks';
 import {
-  sanitizeMatch, buildOrMatch, hybridSearch, makeFtsTermPresent, tokenize, STOPWORDS_DE,
+  sanitizeMatch, buildOrMatch, hybridSearch, makeFtsTermPresent, tokenize, STOPWORDS_DE, adaptiveSearch,
 } from '../lib/or-search.mjs';
 import { evaluate, ndcgAtK, precisionAtK } from './metrics.mjs';
 
@@ -372,9 +374,12 @@ async function lanesForDe(corpusPath, stem, dbOpts, stopwords = 'stemmer', adapt
   const { lanes } = result;
   const sparseStmt = dbUni.prepare('SELECT count(*) AS c FROM (SELECT 1 FROM docs WHERE docs MATCH ? LIMIT ?)');
   const sparse = (q, tau) => sparseStmt.get(buildOrMatch(q, de), tau + 1).c <= tau;
+  const countUpTo = (match, n) => sparseStmt.get(match, n).c;
   for (const tau of adaptiveTau) {
     lanes[`adaptive-trigram-${tau}`] = (q) => (sparse(q, tau) ? lanes['or-trigram'](q) : lanes.or(q));
     lanes[`adaptive-stem-${tau}`] = (q) => (sparse(q, tau) ? lanes['hybrid-expanded'](q) : lanes.or(q));
+    lanes[`adaptive-search-${tau}`] = (q) => adaptiveSearch(search, countUpTo, q, (r) => r.content,
+      { k: 10, tau, expand: (t) => stem.queryTermVariants(t), ...de });
   }
   return result;
 }

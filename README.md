@@ -214,10 +214,10 @@ compares — in [docs/VALIDATION.md](docs/VALIDATION.md).
 ## Other exports
 
 `STOPWORDS_DE` (259 words, T21) is the German stopword list for `tokenize`,
-`buildOrMatch` and `sanitizeMatch`. `coverageRerank`, `hybridSearch` and
-`makeFtsTermPresent` remain exported so
+`buildOrMatch` and `sanitizeMatch`. `coverageRerank`, `hybridSearch`,
+`makeFtsTermPresent` and `adaptiveSearch` (T25) remain exported so
 the measurements stay reproducible. They are measured, not recommended; see
-the English table 3 above. `makeFtsTermPresent` had a bug under `node:sqlite` that
+the English table 3 above and, for `adaptiveSearch`, T25 in `docs/VALIDATION.md`. `makeFtsTermPresent` had a bug under `node:sqlite` that
 silently ignored the row under test; it is fixed since T14, see the
 CHANGELOG.
 
