@@ -19,6 +19,9 @@ Erlaubte Dateien:
 - test/german-recipe.test.mjs
 - test/stopwords-de.test.mjs
 - test/fixtures/beir-de-stop/
+- test/fixtures/beir-de-stop-lanes/
+- test/fixtures/de/stub-stemmer.mjs
+- test/scale-run.test.mjs
 - docs/VALIDATION.md
 - docs/ZIEL.md
 - README.md
@@ -34,7 +37,12 @@ Erlaubte Dateien:
   ist die Liste von T16 bis T19, die Ausgabe bleibt unverändert. `lib` nimmt
   `STOPWORDS_DE` für jede deutsche Lane; die Stemmer-Lanes bekommen die
   Anfrage ohne diese Wörter. JSON-Feld `stopwords: "lib"`.
-- `scale-run.sh`: Variable `DE_STOPWORDS` (Standard `stemmer`).
+- `scale-run.sh`: Variable `DE_STOPWORDS` (Standard `stemmer`). Ein fortgesetzter Lauf
+  mit anderen Parametern als beim ersten Start bricht ab (Exit 5).
+- Review-Befund: Im lib-Modus fallen auch Stemmer-Varianten weg, die in
+  `STOPWORDS_DE` stehen („viele“ → „viel“, „Check-in“ → „in“), und
+  Bindestriche am Wortrand („Vor-“). Die Stemmer-Lanes werden danach neu
+  gemessen.
 - Schritt 1: Code und Tests. Schritt 2: `docs/VALIDATION.md`, Abschnitt
   `## T21 – German stopwords (Snowball) and German scale (mMARCO-de)`.
   Schritt 3: README, CHANGELOG, ZIEL.
