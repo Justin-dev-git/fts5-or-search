@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 Behavior changes to public functions are marked **Behavior change**.
 
+## Unreleased
+
+### Changed: README order as in Science/Nature (T30, docs only)
+- Summary, introduction, results (with the OpenClaw case study), conclusion; then the
+  method and glossary; usage, reproduction and how it was built at the end. Content
+  only moved; the case study now says that this repository is a library, not an
+  OpenClaw plugin.
+
 ## 0.3.0 (2026-10-31)
 
 Since 0.2.0: German support (`STOPWORDS_DE`, recipes for `unicode61` and `trigram`),
