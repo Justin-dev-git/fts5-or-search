@@ -5,8 +5,8 @@ strict `term1 AND term2 AND …` match string loses almost every relevant
 document — even with Porter stemming enabled. A quoted OR match scored by
 FTS5's built-in BM25 (`ORDER BY rank`) fixes that.
 
-**The core finding** (nDCG@10, untuned, every number from
-`docs/VALIDATION.md`):
+**The core finding** (nDCG@10; `and` and `or` have no tuned parameters;
+every number from `docs/VALIDATION.md`):
 
 | dataset | documents | strict AND | quoted OR |
 |---|---:|---:|---:|
@@ -22,9 +22,11 @@ FTS5's built-in BM25 (`ORDER BY rank`) fixes that.
   of the tested extensions — coverage re-ranking, BM25/coverage blends,
   title weighting — was measurably better.
 - **German:** OR with `STOPWORDS_DE` (the Snowball German stop word list plus
-  28 more words); below 50 000 documents on a `trigram` index (provisional),
-  from 50 000 documents on a `unicode61` index. Prefix queries on the
-  `unicode61` index are a measured option from 50 000 documents (T26).
+  28 more words); below 50 000 documents on a `trigram` index (provisional;
+  not confirmed on GerDaLIRSmall, −0.0006), from 50 000 documents on a
+  `unicode61` index. Prefix queries on the `unicode61` index are a measured
+  option from 50 000 documents (T26), not yet a library function and not yet
+  the recommendation.
 - **Scale:** latency and index size grow about linearly with the corpus. At
   1 000 000 passages the OR lane had a p95 of 118.78 ms (English) and
   24.72 ms (German), on the full 8 841 823 passages 1 027.75 ms (English).
@@ -33,7 +35,8 @@ Contents: [Introduction](#introduction) · [Results](#results) ·
 [Case study](#case-study-openclaw-memory-and-context) ·
 [How to read the results](#how-to-read-the-results) ·
 [Conclusion](#conclusion) · [Quick start](#quick-start) ·
-[Reproduce](#reproduce)
+[Other exports](#other-exports) · [Reproduce](#reproduce) ·
+[How this was built](#how-this-was-built) · [License](#license)
 
 ## Introduction
 
@@ -168,15 +171,18 @@ them. nDCG@10, all lanes in one run per set:
 | WebFAQ-de | 891 201 | 0.1332 | 0.4665 | 0.4904 | 0.4946 |
 | GerDaLIRSmall | 9 969 | 0.0343 | 0.6150 | 0.6143 | 0.6153 |
 
-p95 on WebFAQ-de 891 201 in the same run: `or` 72.58 ms, `or-prefix-4`
-86.76 ms, `or-trigram` 408.66 ms.
+p95 on WebFAQ-de 891 201 in the T26 run (latencies are comparable only
+within one run): `or` 72.58 ms, `or-prefix-4` 86.76 ms, `or-trigram`
+408.66 ms.
 
 **Sub-word matching: trigram.** The trigram tokenizer matches sub-words:
 „Ausweis“ finds „Personalausweis“. Over `or` it added +0.0543 (GermanDPR)
 and +0.0349 (GovService) nDCG@10, on mMARCO-de +0.0255 (10 000 passages),
-+0.0121 (100 000) and +0.0007 (1 000 000). It costs 2.93× the index size and
-2.08× (GovService) to 9.51× (mMARCO-de, 100 000 passages) the p95 of `or`; at
-1 000 000 passages 188.39 instead of 24.72 ms.
++0.0121 (100 000) and +0.0007 (1 000 000); on WebFAQ-de +0.0304 and +0.0239,
+on GerDaLIRSmall −0.0006 (T25). It costs 2.93× the index size (mMARCO-de
+1 000 000) and 2.08× (GovService) to 9.51× (mMARCO-de, 100 000 passages) the
+p95 of `or`; at 1 000 000 passages 188.39 instead of 24.72 ms, on
+GerDaLIRSmall 6191.33 instead of 425.84 ms (T25).
 
 **Sub-word matching: prefix queries (T26).** Every word of at least four
 letters as a prefix query (`"wort"*`) on the normal `unicode61` index:
@@ -308,9 +314,10 @@ On one private OpenClaw installation (only aggregate numbers; details in
   **Recall@100** – share of all relevant documents within the top 100.
 - **p50 / p95** – median and 95th-percentile latency per query, in ms.
 - **E5** – the adoption criterion: on every untuned dataset at least +0.01
-  nDCG@10 over plain OR, P@10 not worse, p95 at most 3× (or 10 ms more than)
-  plain OR, about 50 lines of library code at most; applied per **size
-  class** (small < 50 000, medium up to 500 000, large above).
+  nDCG@10 over plain OR, P@10 not worse, p95 at most 3× that of plain OR or
+  at most 10 ms more, whichever is larger (same run), about 50 lines of
+  library code at most; applied per **size class** (small < 50 000, medium
+  up to 500 000, large above).
 - **95 % CI** – confidence interval of a difference from a paired bootstrap
   over the queries; if it excludes 0 the difference is unlikely to be chance.
 - **W / T / L** – number of queries where a lane is better / equal / worse.
@@ -445,7 +452,8 @@ set after the measurements (T23); it is confirmed only when a further small
 test set agrees, and GerDaLIRSmall did not (−0.0006, T25). A corpus that
 grows past it needs a new `unicode61` index. With trigram, query terms
 shorter than three characters match nothing, and `STOPWORDS_DE` keeps short
-function words out of sub-word matching: „die“ would otherwise match inside
+function words out of sub-word matching ([Results](#german)): „die“ would
+otherwise match inside
 „Dienst“ (`test/german-recipe.test.mjs`; `npm test` checks that your Node
 build supports it).
 
