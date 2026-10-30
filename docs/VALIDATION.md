@@ -2074,3 +2074,61 @@ Per lane, untuned datasets met: `or-stem` 1 of 4, `or-trigram` 3 of 5, `hybrid` 
 - German with the former 94-word list (T16–T18): `or-trigram`, `hybrid` and
   `hybrid-trigram` met the three measurable parts on both small datasets
   under the old rule; the floor keeps that.
+
+## T23 – E5 per size class (re-assessment, no new measurement)
+
+Change of E5 (`docs/ZIEL.md`, on behalf of the owner): the recommendation is
+made per size class — small below 50 000 documents, medium 50 000 to
+500 000, large above. An extension is recommended for a class if it meets
+E5 (with the latency floor of T22) on every untuned test set of that class.
+The class limits were set after the measurements, so every class
+recommendation is provisional until a further independent test set of that
+class confirms it. Nothing was measured again.
+
+Test sets per class (untuned only): German small = GermanDPR (2 876),
+GovService (105), mMARCO-de 10 000; German medium = mMARCO-de 100 000;
+German large = mMARCO-de 1 000 000. English small = mMARCO 10 000 (SciFact
+and NFCorpus were tuning sets); English medium = FiQA (57 638), TREC-COVID
+(171 332), mMARCO 100 000; English large = mMARCO 1 000 000.
+
+### German (`STOPWORDS_DE`, verdicts from T22)
+
+| lane | small | medium | large | library code |
+|---|---|---|---|---|
+| `or-trigram` | met on 3 of 3 (+0.0543, +0.0349, +0.0255) | not met (p95 21.30 ms, budget 12.24 ms) | not met (+0.0007) | none: tokenizer option |
+| `hybrid-expanded` | met on 3 of 3 (+0.0506, +0.0121, +0.0397) | met (+0.0140) | not met (−0.0042) | needs german-fts5-stemmer (a new runtime dependency) |
+| `hybrid-trigram` | met on 3 of 3 (+0.0485, +0.0365, +0.0141) | not met (+0.0009) | not met (−0.0072) | substring re-rank, not in the library |
+| `hybrid` | not met (mMARCO-de 10 000: +0.0014) | not met (+0.0006) | not met (+0.0011) | substring re-rank, not in the library |
+| `or-stem` | not met (GovService −0.0111; GermanDPR tuned) | not met (−0.0100) | not met (−0.0296) | needs german-fts5-stemmer |
+
+- Small: three lanes meet the measurable parts. `or-trigram` needs no
+  library code. `hybrid-trigram` adds a re-rank and is not better than
+  `or-trigram` (−0.0058, +0.0016, −0.0114 nDCG@10 on GermanDPR, GovService,
+  mMARCO-de 10 000). `hybrid-expanded` needs a new runtime dependency, which
+  `docs/ZIEL.md` excludes; against `or-trigram` it gives −0.0037, −0.0228,
+  +0.0142.
+- Medium: only `hybrid-expanded` meets the measurable parts, on one test set,
+  and it needs the excluded dependency.
+- Large: no lane.
+
+### English (best measured extension per untuned test set, ΔnDCG@10 vs `or`)
+
+| class | test set | best extension | ΔnDCG@10 | source |
+|---|---|---|---:|---|
+| small | mMARCO 10 000 | `blendidf-0.1` | +0.0012 | T19 |
+| medium | FiQA | `blendidf-0.1` | +0.0013 | T14 |
+| medium | TREC-COVID | `blend-0.1` | −0.0023 | T14 |
+| medium | mMARCO 100 000 | `blendidf-0.1` | +0.0010 | T19 |
+| large | mMARCO 1 000 000 | `blendidf-0.1` | +0.0037 | T19 |
+
+No English extension reaches +0.01 in any class.
+
+### Facts (provisional class recommendation)
+
+- English, every class: OR on `porter unicode61`.
+- German small (below 50 000 documents): OR on a
+  `trigram remove_diacritics 1` index with `STOPWORDS_DE`; German medium and
+  large: OR on `unicode61` with `STOPWORDS_DE`.
+- A German corpus that grows past 50 000 documents needs a new index
+  (trigram → `unicode61`); the trigram index is 2.93× the size of the
+  `unicode61` index at 1 000 000 passages (T21).
