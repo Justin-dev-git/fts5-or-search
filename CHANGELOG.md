@@ -3,7 +3,21 @@
 All notable changes to this project are documented here.
 Behavior changes to public functions are marked **Behavior change**.
 
-## Unreleased
+## 0.3.0 (2026-10-31)
+
+Since 0.2.0: German support (`STOPWORDS_DE`, recipes for `unicode61` and `trigram`),
+validation on German and large English/German corpora up to 8 841 823 passages, the
+measured options `adaptiveSearch` (library) and prefix queries (bench only), and a
+README with introduction, method, OpenClaw case study and conclusion. One
+**Behavior change**: `STOPWORDS_DE` is complete since T21 (259 words). The entries
+below are in reverse order.
+
+### Changed: README order and formatting (T29, docs only)
+- The README starts with what matters: a short summary with the core finding, then
+  introduction, results, case study, method, conclusion; usage, reproduction and how
+  it was built come last. Results that were in the quick start moved to the results;
+  native German test sets (WebFAQ-de, GerDaLIRSmall) got their own table. No new
+  claims, every number from `docs/VALIDATION.md`.
 
 ### Changed: README introduction, how to read, OpenClaw case study, conclusion (T27, docs only)
 - New sections `Introduction`, `How to read the results` (method and glossary),
