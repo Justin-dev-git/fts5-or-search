@@ -216,3 +216,20 @@ Alle Zahlen stammen aus `docs/VALIDATION.md`, Abschnitt T23.
   GerDaLIR). Wächst ein deutscher Korpus über 50 000 Dokumente, braucht er
   einen neuen Index.
 
+## Ergebnis nach T24 (30.10.2026)
+Alle Zahlen stammen aus `docs/VALIDATION.md`, Abschnitt T24.
+
+- **Adaptiver Stemmer** (`adaptive-stem-1000`): erweitert nur Anfragen, deren
+  OR-Match höchstens 1 000 Dokumente trifft. Er erfüllt die messbaren Teile
+  von E5 auf jedem nicht abgestimmten Testsatz in jeder Größenklasse
+  (+0.0121 bis +0.0397 nDCG@10), bei 10 000, 100 000 und 1 000 000 mit
+  95-%-Intervallen über null, bei fast gleicher Latenz wie `or`. τ wurde auf
+  einem eigenen Split gewählt.
+- Er braucht german-fts5-stemmer als Laufzeitabhängigkeit. Das schließt der
+  Nicht-Ziel-Absatz oben aus; ob das so bleibt, entscheidet der Owner.
+- **Adaptives Trigram** bringt nichts über `or-trigram` hinaus und liegt bei
+  1 000 000 unter `or`.
+- **Auflösung:** Mit 1 000 Fragen sind Unterschiede unter etwa ±0.016
+  nDCG@10 bei 100 000 und 1 000 000 nicht von Rauschen zu unterscheiden. Die
+  Klassenaussagen von T23 für „mittel“ und „groß“ sind daher schwach belegt.
+
