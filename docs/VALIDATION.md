@@ -2006,3 +2006,71 @@ German (`STOPWORDS_DE`), ΔnDCG@10 / ΔP@10 vs `or`; p95 100 000 → 1 000 000
 Index size 100 000 → 1 000 000: English porter-unicode61 59.08 → 590.23 MB (10.0×), German unicode61 67.47 → 663.22 MB (9.8×), trigram 188.87 → 1942.40 MB (10.3×); trigram/unicode61 at 1 000 000: 2.93×.
 
 ΔnDCG@10 vs `or-trigram` (German): hybrid-expanded +0.0142, +0.0019, -0.0049; hybrid-trigram -0.0114, -0.0112, -0.0079 (10 000, 100 000, 1 000 000).
+
+## T22 – E5 with a latency floor (re-assessment, no new measurement)
+
+Change of E5 (`docs/ZIEL.md`, on behalf of the owner): the latency part was
+"p95 at most 3× the p95 of `or`". It now is: p95 at most 3× **or** at most
+10 ms more than `or`, whichever is larger, both measured in the same run.
+Reason: on small corpora the ratio alone let sub-millisecond differences
+decide (GovService: `or` p95 0.24 ms, so the old limit was 0.72 ms), which
+are neither noticeable nor stable between runs. Also made explicit: a
+dataset measured at several sizes counts once per size. The change only
+makes E5 more lenient. Nothing was measured again; the table uses the T21
+files (`STOPWORDS_DE`).
+
+German, every extension against `or` (budget = max(3 × p95 of `or`, p95 of
+`or` + 10 ms)). "2 runs": the stemmer lanes were measured again after the
+T21 review fix, so their p95 and that of `or` come from two runs; the
+margins to the budget are large (at most 37.21 ms against 74.16 ms).
+
+| lane | dataset | ΔnDCG@10 | ΔP@10 | p95 lane / `or` ms | budget ms | nDCG | P@10 | p95 | E5 (excl. lines) |
+|---|---|---:|---:|---:|---:|---|---|---|---|
+| `or-stem` | GermanDPR | +0.0088 | −0.0008 | 1.94 / 0.83 (2 runs) | 10.83 | no | no | yes | tuned (does not count) |
+| `or-stem` | GovService | −0.0111 | +0.0014 | 1.51 / 0.24 (2 runs) | 10.24 | no | yes | yes | not met |
+| `or-stem` | mMARCO-de 10 000 | +0.0310 | +0.0054 | 0.97 / 0.46 (2 runs) | 10.46 | yes | yes | yes | met |
+| `or-stem` | mMARCO-de 100 000 | −0.0100 | +0.0025 | 4.28 / 2.24 (2 runs) | 12.24 | no | yes | yes | not met |
+| `or-stem` | mMARCO-de 1 000 000 | −0.0296 | −0.0029 | 37.21 / 24.72 (2 runs) | 74.16 | no | no | yes | not met |
+| `or-trigram` | GermanDPR | +0.0543 | +0.0041 | 4.21 / 0.83 | 10.83 | yes | yes | yes | met |
+| `or-trigram` | GovService | +0.0349 | +0.0025 | 0.50 / 0.24 | 10.24 | yes | yes | yes | met |
+| `or-trigram` | mMARCO-de 10 000 | +0.0255 | +0.0030 | 3.04 / 0.46 | 10.46 | yes | yes | yes | met |
+| `or-trigram` | mMARCO-de 100 000 | +0.0121 | +0.0017 | 21.30 / 2.24 | 12.24 | yes | yes | no | not met |
+| `or-trigram` | mMARCO-de 1 000 000 | +0.0007 | −0.0004 | 188.39 / 24.72 | 74.16 | no | no | no | not met |
+| `hybrid` | GermanDPR | +0.0385 | +0.0019 | 0.80 / 0.83 | 10.83 | yes | yes | yes | met |
+| `hybrid` | GovService | +0.0140 | +0.0005 | 0.37 / 0.24 | 10.24 | yes | yes | yes | met |
+| `hybrid` | mMARCO-de 10 000 | +0.0014 | +0.0003 | 0.43 / 0.46 | 10.46 | no | yes | yes | not met |
+| `hybrid` | mMARCO-de 100 000 | +0.0006 | +0.0010 | 2.16 / 2.24 | 12.24 | no | yes | yes | not met |
+| `hybrid` | mMARCO-de 1 000 000 | +0.0011 | −0.0006 | 24.55 / 24.72 | 74.16 | no | no | yes | not met |
+| `hybrid-expanded` | GermanDPR | +0.0506 | +0.0007 | 1.24 / 0.83 (2 runs) | 10.83 | yes | yes | yes | met |
+| `hybrid-expanded` | GovService | +0.0121 | +0.0008 | 0.77 / 0.24 (2 runs) | 10.24 | yes | yes | yes | met |
+| `hybrid-expanded` | mMARCO-de 10 000 | +0.0397 | +0.0060 | 0.93 / 0.46 (2 runs) | 10.46 | yes | yes | yes | met |
+| `hybrid-expanded` | mMARCO-de 100 000 | +0.0140 | +0.0036 | 4.21 / 2.24 (2 runs) | 12.24 | yes | yes | yes | met |
+| `hybrid-expanded` | mMARCO-de 1 000 000 | −0.0042 | −0.0009 | 37.14 / 24.72 (2 runs) | 74.16 | no | no | yes | not met |
+| `hybrid-trigram` | GermanDPR | +0.0485 | +0.0011 | 4.20 / 0.83 | 10.83 | yes | yes | yes | met |
+| `hybrid-trigram` | GovService | +0.0365 | +0.0030 | 0.68 / 0.24 | 10.24 | yes | yes | yes | met |
+| `hybrid-trigram` | mMARCO-de 10 000 | +0.0141 | +0.0025 | 2.96 / 0.46 | 10.46 | yes | yes | yes | met |
+| `hybrid-trigram` | mMARCO-de 100 000 | +0.0009 | +0.0004 | 21.35 / 2.24 | 12.24 | no | yes | no | not met |
+| `hybrid-trigram` | mMARCO-de 1 000 000 | −0.0072 | −0.0013 | 189.36 / 24.72 | 74.16 | no | no | no | not met |
+
+Per lane, untuned datasets met: `or-stem` 1 of 4, `or-trigram` 3 of 5, `hybrid` 2 of 5, `hybrid-expanded` 4 of 5, `hybrid-trigram` 3 of 5.
+
+### Facts (no recommendation)
+
+- German: no extension meets E5 on every untuned dataset. At 1 000 000
+  mMARCO-de passages every extension misses the nDCG@10 part (`or-trigram`
+  +0.0007, `hybrid` +0.0011, `hybrid-expanded` −0.0042, `hybrid-trigram`
+  −0.0072, `or-stem` −0.0296). `or-trigram` also exceeds the latency budget
+  from 100 000 passages on (21.30 ms against a budget of 12.24 ms; 188.39 ms
+  against 74.16 ms at 1 000 000).
+- With the floor, `or-trigram` and `hybrid-trigram` meet the latency part on
+  GermanDPR (4.21 and 4.20 ms against 10.83 ms); under the old rule they
+  exceeded 3× there (5.07× and 5.06×, T21).
+- `hybrid-expanded` meets the measurable parts on GermanDPR, GovService,
+  mMARCO-de 10 000 and 100 000 and misses at 1 000 000; it needs
+  german-fts5-stemmer as an extra package.
+- English (T12–T19): every extension misses the nDCG@10 part on at least
+  one untuned dataset (largest gain at 1 000 000 passages: `blendidf-0.1`
+  +0.0037, T19), so the floor changes no English result.
+- German with the former 94-word list (T16–T18): `or-trigram`, `hybrid` and
+  `hybrid-trigram` met the three measurable parts on both small datasets
+  under the old rule; the floor keeps that.
