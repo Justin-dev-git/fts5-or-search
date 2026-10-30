@@ -3,7 +3,28 @@
 All notable changes to this project are documented here.
 Behavior changes to public functions are marked **Behavior change**.
 
-## Unreleased
+## 0.3.0 (2026-10-31)
+
+Since 0.2.0: German support (`STOPWORDS_DE`, recipes for `unicode61` and `trigram`),
+validation on German and large English/German corpora up to 8 841 823 passages, the
+measured options `adaptiveSearch` (library) and prefix queries (bench only), and a
+README with introduction, method, OpenClaw case study and conclusion. No behavior
+change to the functions of 0.2.0; `STOPWORDS_DE` (259 words) and `adaptiveSearch`
+are new. The **Behavior change** below (T21) concerns the 94-word `STOPWORDS_DE`
+that existed only on master before T21. The entries below are in reverse order.
+
+### Changed: README order and formatting (T29, docs only)
+- The README starts with what matters: a short summary with the core finding, then
+  introduction, results, case study, method, conclusion; usage, reproduction and how
+  it was built come last. Results that were in the quick start moved to the results;
+  native German test sets (WebFAQ-de, GerDaLIRSmall) got their own table. No new
+  claims, every number from `docs/VALIDATION.md`.
+
+### Changed: scale results (T19, T20, docs only)
+- `docs/VALIDATION.md` and README: `and` and `or` on MS MARCO and mMARCO-de from
+  100 000 to all 8 841 823 passages; latency and index size grow about linearly. At
+  full size `or` reaches MRR@10 0.1797 (English) and 0.1105 (German) against the
+  published BM25 values 0.184 and 0.136.
 
 ### Changed: README introduction, how to read, OpenClaw case study, conclusion (T27, docs only)
 - New sections `Introduction`, `How to read the results` (method and glossary),
@@ -142,7 +163,7 @@ Behavior changes to public functions are marked **Behavior change**.
 - German lane `hybrid-trigram` (T18): trigram OR pool + the same substring
   coverage re-rank.
 
-## 0.2.0 (unreleased)
+## 0.2.0 (not released separately; starting point of this repository)
 
 ### Changed: package and repository renamed to fts5-or-search
 - The name now matches the recommendation (plain OR with FTS5 BM25). This
