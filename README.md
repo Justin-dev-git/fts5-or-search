@@ -8,10 +8,15 @@ FTS5's built-in BM25 (`ORDER BY rank`) fixes that.
 - **English:** OR on a `porter unicode61` index. On four BEIR datasets none
   of the tested extensions — coverage re-ranking (with a 500 or a 50 pool),
   soft BM25/coverage blends, title weighting — was measurably better.
-- **German:** OR on a `trigram` index (built into FTS5). On two German
-  datasets it beat OR on `unicode61` by +0.0541 and +0.0691 nDCG@10; a
-  query-side stemmer (german-fts5-stemmer) and coverage re-ranking did not
-  beat it.
+- **German:** OR on a `unicode61` index with `STOPWORDS_DE` (the Snowball
+  German stop word list plus 28 more words). With this list none of the
+  tested extensions — a trigram index, a query-side stemmer
+  (german-fts5-stemmer), coverage re-ranking — met the adoption criterion on
+  every untuned dataset; at 1 000 000 mMARCO-de passages none was better
+  than OR.
+- **Scale:** latency and index size grow about linearly with the corpus. At
+  1 000 000 passages the OR lane had a p95 of 118.78 ms (English) and
+  24.72 ms (German).
 
 The measurements are in `docs/VALIDATION.md` and summarized below.
 
@@ -42,7 +47,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { buildOrMatch, STOPWORDS_DE } from 'fts5-or-search';
 
 const db = new DatabaseSync('mycorpus.db');
-db.exec("CREATE VIRTUAL TABLE docs_fts USING fts5(content, tokenize='trigram remove_diacritics 1')");
+db.exec("CREATE VIRTUAL TABLE docs_fts USING fts5(content, tokenize='unicode61')");
 // … INSERT INTO docs_fts (content) VALUES (?) …
 const stmt = db.prepare(
   'SELECT rowid, content FROM docs_fts WHERE docs_fts MATCH ? ORDER BY rank LIMIT ?');
@@ -50,20 +55,28 @@ const q = 'Wo beantrage ich einen neuen Personalausweis?';
 const top10 = stmt.all(buildOrMatch(q, { stopwords: STOPWORDS_DE }), 10);
 ```
 
-The trigram tokenizer matches sub-words, so „Ausweis“ finds
-„Personalausweis“, and `remove_diacritics 1` lets „Mullabfuhr“ find
-„Müllabfuhr“. `STOPWORDS_DE` is the list every German measurement used. With
-trigram it also keeps short function words out of sub-word matching: „die“
-would otherwise match inside „Dienst“ (`test/german-recipe.test.mjs`). Query terms shorter than three characters match
-nothing. The trigram index was 2.59× (GermanDPR) and 2.50× (GovService) the
-size of a `unicode61` index. `npm test` checks that your Node build supports
-the recipe.
+`unicode61` folds umlauts (ä→a) and keeps ß. `STOPWORDS_DE` (259 words) is
+the Snowball German stop word list (BSD-3-Clause), the 94-word list of the
+earlier measurements and the spellings without umlaut. Until T21 it had only
+those 94 words: frequent words such as „in“ (half of all mMARCO-de passages)
+were missing, and each query with one of them made FTS5 score a large part
+of the corpus. With the complete list the p95 of `or` at 1 000 000 passages
+fell from 266.96 to 24.72 ms, and nDCG@10 dropped on no German dataset.
 
-If the index cannot change (an existing `unicode61` table), use the same
-call against it: plain OR with `STOPWORDS_DE`. A substring coverage re-rank
-of the top 50 added +0.0363 and +0.0280 nDCG@10 there (T17); it is
-`substringCoverageRerank` in `scripts/beir-bench.mjs`, meets E5 on both
-German datasets, and is not part of the library.
+**Trigram (option).** `tokenize='trigram remove_diacritics 1'` matches
+sub-words: „Ausweis“ finds „Personalausweis“. Over `or` it added +0.0543
+(GermanDPR) and +0.0349 (GovService) nDCG@10, on mMARCO-de +0.0255
+(10 000 passages), +0.0121 (100 000) and +0.0007 (1 000 000). It costs 2.93×
+the index size (1 000 000 passages) and 5.07× to 9.51× the p95 of `or` on
+GermanDPR and mMARCO-de (2.08× on GovService). With trigram, query terms
+shorter than three characters match nothing, and `STOPWORDS_DE` keeps short
+function words out of sub-word matching: „die“ would otherwise match inside
+„Dienst“ (`test/german-recipe.test.mjs`; `npm test` checks that your Node
+build supports it).
+
+A substring coverage re-rank of the top 50 (`substringCoverageRerank` in
+`scripts/beir-bench.mjs`, not part of the library) added +0.0385 and +0.0140
+nDCG@10 on GermanDPR and GovService, and at most +0.0014 on mMARCO-de.
 
 ## Measurements
 
@@ -119,34 +132,61 @@ in-memory database, one machine.
 ### German
 
 nDCG@10 on GermanDPR (test split, 2 876 passages, 1 025 questions, via the
-BEIR export `PM-AI/germandpr-beir`) and GermanGovService
+BEIR export `PM-AI/germandpr-beir`), GermanGovService
 (`it-at-m/LHM-Dienstleistungen-QA`, test split, 105 documents, 357
-questions). All lanes use `STOPWORDS_DE`. `or-stem` was chosen over
-`or-stem-paradigm` on GermanDPR, so only GovService is untuned for it; every
-other lane is untuned on both.
+questions) and mMARCO-de (the German machine translation of MS MARCO,
+`unicamp-dl/mmarco`; 1 000 000 passages, 1 000 dev questions). All lanes use
+`STOPWORDS_DE` (T21). `or-stem` was chosen over `or-stem-paradigm` on
+GermanDPR, so GermanDPR is tuned for it; every other cell is untuned.
 
-| variant | idea | GermanDPR | GovService |
-|---|---|---:|---:|
-| `and` | strict AND, `unicode61` | 0.0263 | 0.0753 |
-| `or` (reference) | quoted OR, `unicode61` | 0.4797 | 0.6937 |
-| `or-stem` | OR of all german-fts5-stemmer variants | 0.4874 | 0.6968 |
-| `hybrid` | `or` + substring coverage re-rank, pool 50 | 0.5160 | 0.7217 |
-| `hybrid-expanded` | `or-stem` + variant coverage re-rank, pool 50 | 0.5227 | 0.7123 |
-| **`or-trigram`** | quoted OR, `trigram remove_diacritics 1` | **0.5338** | **0.7628** |
-| `hybrid-trigram` | `or-trigram` + substring coverage re-rank | 0.5257 | 0.7489 |
+| variant | idea | GermanDPR | GovService | mMARCO-de |
+|---|---|---:|---:|---:|
+| `and` | strict AND, `unicode61` | 0.0356 | 0.1005 | 0.1508 |
+| **`or`** (reference) | quoted OR, `unicode61` | **0.4807** | **0.7280** | **0.3493** |
+| `or-stem` | OR of all german-fts5-stemmer variants | 0.4891 | 0.7169 | 0.3197 |
+| `hybrid` | `or` + substring coverage re-rank, pool 50 | 0.5192 | 0.7420 | 0.3504 |
+| `hybrid-expanded` | `or-stem` + variant coverage re-rank, pool 50 | 0.5307 | 0.7401 | 0.3451 |
+| `or-trigram` | quoted OR, `trigram remove_diacritics 1` | 0.5350 | 0.7629 | 0.3500 |
+| `hybrid-trigram` | `or-trigram` + substring coverage re-rank | 0.5292 | 0.7645 | 0.3421 |
 
-`or-trigram` meets E5 on both datasets: +0.0541 and +0.0691 nDCG@10, P@10
-+0.0040 and +0.0039, p95 2.38× and 1.85× of `or`. Re-ranking on top of
-trigram does not add to it. Plausibility: `or` is close to the BM25 values
-of NanoMTEB-German (0.4647 and 0.6132, 200-query subsets).
+No lane meets E5 on every untuned dataset: `or-trigram` and `hybrid-trigram`
+exceed 3× the p95 of `or` on GermanDPR and on mMARCO-de; `hybrid` stays
+below +0.01 on mMARCO-de; `or-stem` and `hybrid-expanded` lose on mMARCO-de
+at 1 000 000 passages. With the 94-word list of T16–T18, `or-trigram` met E5
+on GermanDPR and GovService and was the German recommendation; the complete
+list made `or` faster (GermanDPR p95 2.06 → 0.83 ms), so trigram now exceeds
+3× its p95 there (5.07×). Plausibility (T16): `or` with the former list
+(0.4797 and 0.6937) is close to the BM25 values of NanoMTEB-German (0.4647
+and 0.6132, 200-query subsets).
+
+### Scale
+
+MS MARCO passages (English, `porter unicode61`) and the same passages in
+mMARCO-de (`unicode61`, `STOPWORDS_DE`), 1 000 dev questions, `or` lane:
+
+| | 100 000 passages | 1 000 000 passages |
+|---|---:|---:|
+| English nDCG@10 | 0.7705 | 0.5497 |
+| English p50 / p95 ms | 3.77 / 9.43 | 44.66 / 118.78 |
+| English index MB | 59.08 | 590.23 |
+| German nDCG@10 | 0.4948 | 0.3493 |
+| German p50 / p95 ms | 0.74 / 2.24 | 6.43 / 24.72 |
+| German index MB | 67.47 | 663.22 |
+
+Latency and index size grow about linearly: for `ORDER BY rank`, FTS5
+computes BM25 for every document that contains at least one query term
+before `LIMIT` takes the top results. Strict AND stays faster (English p50
+0.81 ms at 1 000 000 passages) but finds much less: nDCG@10 0.1709 (English)
+and 0.1508 (German). The full corpus (8.8 million passages) is not measured
+yet.
 
 Full provenance — download commands, checksums, licenses, per-query
 compares — in [docs/VALIDATION.md](docs/VALIDATION.md).
 
 ## Other exports
 
-`STOPWORDS_DE` is the German stopword list for `tokenize`, `buildOrMatch`
-and `sanitizeMatch`. `coverageRerank`, `hybridSearch` and
+`STOPWORDS_DE` (259 words, T21) is the German stopword list for `tokenize`,
+`buildOrMatch` and `sanitizeMatch`. `coverageRerank`, `hybridSearch` and
 `makeFtsTermPresent` remain exported so
 the measurements stay reproducible. They are measured, not recommended; see
 the English table 3 above. `makeFtsTermPresent` had a bug under `node:sqlite` that
@@ -170,7 +210,15 @@ German: download and conversion are in `tasks/T16-german-validation.md`
 time:
 
 ```bash
-node scripts/beir-bench.mjs --data <dir> --lang de --stemmer <german-fts5-stemmer>/lib/stem-german.mjs --repeat 3 --json
+node scripts/beir-bench.mjs --data <dir> --lang de --stemmer <german-fts5-stemmer>/lib/stem-german.mjs --stopwords lib --repeat 3 --json
+```
+
+`--stopwords lib` uses `STOPWORDS_DE` for every German lane; without it the
+bench uses the stemmer's 94-word list of T16–T19. mMARCO download, conversion
+and the scale runner (`scripts/scale-run.sh`) are in `tasks/T19-scale.md`
+and `tasks/T21-stopwords-de.md`.
+
+```bash
 ```
 
 ```bash
@@ -187,15 +235,17 @@ Every change is a task file in `tasks/` with its own verification command
 task; every push was reviewed independently. The review of T12 found the
 `makeFtsTermPresent` bug that T14 fixed; the review of T17 found that the
 English re-rank lanes of T11–T14 re-ranked a 500-row pool, which T18
-re-measured at k=10. Development happened in a private
+re-measured at k=10; the validation of the scale tooling found the gaps in
+the German stopword list that T21 closed. Development happened in a private
 repository (`fts5-hybrid-search`); this repository starts from its 0.2.0
 state, with all task files and measurements included.
 
 ## Limitations
 
-- Measured for English (Porter) and German (trigram) only.
-- The German datasets are small (2 876 and 105 documents); latency and index
-  size of trigram on large German corpora are not measured.
+- Measured for English (Porter) and German (`unicode61`, trigram) only.
+- German: two small native datasets (2 876 and 105 documents) and mMARCO-de,
+  a machine translation with about one judged passage per question.
+- Corpora above 1 000 000 passages are not measured.
 - Purely lexical: no synonyms beyond what stemming or sub-words cover.
 - Datasets are not shipped (licenses: see `docs/VALIDATION.md`).
 - Latencies come from a single machine.
