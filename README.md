@@ -243,8 +243,8 @@ compares — in [docs/VALIDATION.md](docs/VALIDATION.md).
 
 ## Case study: OpenClaw memory and context
 
-On one private OpenClaw installation (only aggregate numbers; details in
-`docs/VALIDATION.md`, T28). This repository is a library,
+The numbers come from one private OpenClaw installation (only aggregate
+numbers; details in `docs/VALIDATION.md`, T28). This repository is a library,
 not an OpenClaw plugin; the patch measured here is local to that installation.
 
 - **What the code does.** The memory search scores 0.7 × vector similarity +
