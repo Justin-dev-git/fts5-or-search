@@ -35,8 +35,9 @@ This matters in particular for AI agents that search their own memory. The
 assistant framework OpenClaw (version 2026.10.7) combines vector search with
 an FTS5 keyword search for its memory, and the context-management plugin
 lossless-claw (1.1.1) searches the compacted conversation history with
-FTS5 in its full-text mode; both join the query words with AND. Agents phrase memory requests as
-sentences (a median of 7 words on the installation we looked at), so the
+FTS5 in its full-text mode; both join the query words with AND. Agents
+phrase memory requests as sentences (a median of 7 words on the
+installation we looked at), so the
 keyword half rarely finds anything — see the case study below.
 
 This project asks a narrow question: **what is the simplest FTS5 query that
@@ -169,7 +170,7 @@ fell from 266.96 to 24.72 ms, and nDCG@10 dropped on no German dataset.
 `tokenize='trigram remove_diacritics 1'` instead of `unicode61`, with the same
 `buildOrMatch(q, { stopwords: STOPWORDS_DE })` call. The size limit was set
 after the measurements (T23); it is confirmed only when a further small test
-set agrees. A corpus that grows past it needs a new `unicode61` index. The
+set agrees, and GerDaLIRSmall did not (−0.0006, T25). A corpus that grows past it needs a new `unicode61` index. The
 trigram tokenizer matches sub-words: „Ausweis“ finds „Personalausweis“.
 Over `or` it added +0.0543
 (GermanDPR) and +0.0349 (GovService) nDCG@10, on mMARCO-de +0.0255
@@ -415,14 +416,16 @@ state, with all task files and measurements included.
 
 - In English, re-ranking by term coverage, BM25/coverage blends and title
   weights were never measurably better than OR on untuned data (at most
-  +0.0037 nDCG@10, at 1 000 000 passages). In German, a coverage re-rank
-  helped only on small sets (`hybrid`: +0.0385 on GermanDPR, +0.0140 on
-  GovService) and added nothing on top of a trigram index (T23).
+  +0.0037 nDCG@10, at 1 000 000 passages). In German, coverage re-ranks
+  helped only on some sets (`hybrid`: +0.0385 on GermanDPR, +0.0140 on
+  GovService; `hybrid-expanded` also +0.0140 on mMARCO-de 100 000), in no
+  size class once WebFAQ-de and GerDaLIRSmall are counted (T25), and were not
+  better than the trigram index alone (T23).
 - A query-side German stemmer, always applied, gained more than +0.01 only on
   mMARCO-de 10 000 (+0.0310) and lost at 100 000 and 1 000 000 passages
   (−0.0100, −0.0296) and on native German WebFAQ-de (−0.0174, −0.0231);
-  applied only to sparse queries it gained at most +0.0031 on native German
-  (T25).
+  applied only to sparse queries it gained at most +0.0031 on the native
+  German sets tested later (WebFAQ-de, GerDaLIRSmall, T25).
 
 **The trade-off that remains: sub-word matching in German.** On native
 German, matching inside words — inflected forms and compounds, „Hund“ in
