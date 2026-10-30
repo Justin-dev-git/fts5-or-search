@@ -1,7 +1,14 @@
 # T19: Skalierung – Englisch und Deutsch, 10 000 bis 1 Mio. Abschnitte
 
 Stufe: 1 (nur Messung; Code und Tests sind im Review entstanden)
-Arbeits-Branch: scale-2026-10-29
+Arbeits-Branch: scale-2026-10-29 (Werkzeuge, gemergt mit PR #2); Doku: scale-results-2026-10-30
+
+> **Ausführung (30.10.2026):** Phase A und B hat Claude auf dem GX10
+> ausgeführt, nicht der lokale Agent. Die deutschen Lanes laufen mit
+> `STOPWORDS_DE` aus T21 (`DE_STOPWORDS=lib`); ihre Ergebnisse stammen aus dem
+> T21-Lauf und wurden hier nur verlinkt. Die Code-Prüfung unten vergleicht
+> deshalb mit `07aa056` (master nach T21) statt mit `c2b93a1`. Zusätzlich
+> erlaubt: ein Satz zu den englischen Lanes bei 1 000 000 im README.
 
 ## Ziel
 Wie verhalten sich die Suchen, wenn der Korpus wächst?
@@ -35,6 +42,7 @@ Am Code änderst du nichts.
 
 Erlaubte Dateien:
 - docs/VALIDATION.md
+- README.md
 
 ## Phase A – vorbereiten und starten
 
@@ -130,7 +138,7 @@ Erlaubte Dateien:
 
 ## Prüfung
 ```bash
-git diff --quiet c2b93a1 -- lib scripts test package.json
+git diff --quiet 07aa056 -- lib scripts test package.json
 grep -F "## T19 – Scale (MS MARCO / mMARCO)" docs/VALIDATION.md
 grep -E "^[0-9a-f]{64}  .*english_collection\.tsv" docs/VALIDATION.md
 grep -E "^[0-9a-f]{64}  .*german_collection\.tsv" docs/VALIDATION.md

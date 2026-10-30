@@ -129,6 +129,10 @@ has almost no titles, which is why `or-title-3` has no value there.
 Latency of the `or` lane: p95 26.26 ms on FiQA and 83.63 ms on TREC-COVID,
 in-memory database, one machine.
 
+On 1 000 000 MS MARCO passages (T19, 1 000 dev questions) every coverage
+re-rank lane stayed below `or` (−0.0383 to −0.0753 nDCG@10), and the two
+blends differed from it by −0.0006 and +0.0037.
+
 ### German
 
 nDCG@10 on GermanDPR (test split, 2 876 passages, 1 025 questions, via the
