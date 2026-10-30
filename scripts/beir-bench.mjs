@@ -32,6 +32,9 @@
 //           hybrid-expanded, every other query plain `or`. T25: also
 //           adaptive-search-<n>, the library's adaptiveSearch with the stemmer
 //           as expansion (returns 10 rows: only the @10 metrics are comparable).
+//   --prefix-min <n,...>  German only (T26): add the lanes or-prefix-<n>: the
+//           `or` match on unicode61 with every word of at least n letters as an
+//           FTS5 prefix query ("hund"* also finds "hundehalter", "hunde").
 //   --json  additionally prints one JSON line as the LAST output line:
 //           { dataset, docs, queries, lanes: { <lane>:
 //             { ndcg10, mrr10, recall100, p50ms, p95ms } } }
@@ -56,7 +59,7 @@ const BLEND_LAMBDAS = { blend: [0, 0.1, 0.2, 0.5], blendidf: [0.1, 0.2, 0.5] };
 function parseArgs(argv) {
   const out = {
     data: null, repeat: 3, json: false, perQuery: null, lanes: null, titleWeights: null,
-    lang: 'en', stemmer: null, dbDir: null, reportDb: false, reuseDb: false, stopwords: null, adaptiveTau: null,
+    lang: 'en', stemmer: null, dbDir: null, reportDb: false, reuseDb: false, stopwords: null, adaptiveTau: null, prefixMin: null,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -71,6 +74,12 @@ function parseArgs(argv) {
     else if (a === '--report-db') out.reportDb = true;
     else if (a === '--reuse-db') out.reuseDb = true;
     else if (a === '--stopwords') out.stopwords = argv[++i];
+    else if (a === '--prefix-min') {
+      out.prefixMin = argv[++i].split(',').filter(Boolean).map(Number);
+      if (!out.prefixMin.length || !out.prefixMin.every((n) => Number.isInteger(n) && n >= 1)) {
+        throw new Error('beir-bench: --prefix-min needs positive integers');
+      }
+    }
     else if (a === '--adaptive-tau') {
       out.adaptiveTau = argv[++i].split(',').filter(Boolean).map(Number);
       if (!out.adaptiveTau.length || !out.adaptiveTau.every((n) => Number.isInteger(n) && n >= 0)) {
@@ -95,6 +104,7 @@ function parseArgs(argv) {
     if (!['stemmer', 'lib'].includes(out.stopwords)) throw new Error(`beir-bench: --stopwords must be stemmer or lib, got ${out.stopwords}`);
   }
   if (out.adaptiveTau && out.lang !== 'de') throw new Error('beir-bench: --adaptive-tau is German-only');
+  if (out.prefixMin && out.lang !== 'de') throw new Error('beir-bench: --prefix-min is German-only');
   if (out.dbDir && !(existsSync(out.dbDir) && statSync(out.dbDir).isDirectory())) {
     throw new Error(`beir-bench: --db-dir must be an existing directory: ${out.dbDir}`);
   }
@@ -318,7 +328,7 @@ function substringCoverageRerank(rows, groups) {
 const dropStopwords = (q, sw) => q.toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, ' ').split(/\s+/)
   .map((w) => w.replace(/^-+/, '').replace(/-+$/, '')).filter((w) => w && !sw.has(w)).join(' ');
 
-async function lanesForDe(corpusPath, stem, dbOpts, stopwords = 'stemmer', adaptiveTau = []) {
+async function lanesForDe(corpusPath, stem, dbOpts, stopwords = 'stemmer', adaptiveTau = [], prefixMin = []) {
   const sw = stopwords === 'lib' ? STOPWORDS_DE : stem.STOPWORDS;
   const de = { stopwords: sw };
   const variants = stopwords === 'lib'
@@ -381,11 +391,18 @@ async function lanesForDe(corpusPath, stem, dbOpts, stopwords = 'stemmer', adapt
     lanes[`adaptive-search-${tau}`] = (q) => adaptiveSearch(search, countUpTo, q, (r) => r.content,
       { k: 10, tau, expand: (t) => stem.queryTermVariants(t), ...de });
   }
+  // T26: words of at least n letters (letters only) as prefix queries
+  for (const n of prefixMin) {
+    lanes[`or-prefix-${n}`] = (q) => {
+      const ts = tokenize(q, de);
+      return ts.length ? search(ts.map((t) => (/^\p{L}+$/u.test(t) && [...t].length >= n ? `${quoteTerm(t)}*` : quoteTerm(t))).join(' OR ')) : [];
+    };
+  }
   return result;
 }
 
 async function run() {
-  const { data, repeat, json, perQuery, lanes: laneFilter, titleWeights, lang, stemmer, dbDir, reportDb, reuseDb, stopwords, adaptiveTau } = parseArgs(process.argv.slice(2));
+  const { data, repeat, json, perQuery, lanes: laneFilter, titleWeights, lang, stemmer, dbDir, reportDb, reuseDb, stopwords, adaptiveTau, prefixMin } = parseArgs(process.argv.slice(2));
   const corpusPath = join(data, 'corpus.jsonl');
   const dbOpts = { dbDir, prefix: basename(resolve(data)), reuse: reuseDb };
   const queries = new Map(readJsonl(join(data, 'queries.jsonl')).map((q) => [String(q._id), q.text]));
@@ -401,7 +418,7 @@ async function run() {
     if (!(stem.STOPWORDS instanceof Set) || typeof stem.queryTermVariants !== 'function') {
       throw new Error('beir-bench: --stemmer module must export STOPWORDS (Set) and queryTermVariants()');
     }
-    ({ lanes, tokOpts, dbBytes, docs: docCount } = await lanesForDe(corpusPath, stem, dbOpts, stopwords ?? 'stemmer', adaptiveTau ?? []));
+    ({ lanes, tokOpts, dbBytes, docs: docCount } = await lanesForDe(corpusPath, stem, dbOpts, stopwords ?? 'stemmer', adaptiveTau ?? [], prefixMin ?? []));
   } else {
     const { db, docs } = await loadCorpus(corpusPath, 'porter unicode61', { ...dbOpts, name: `${dbOpts.prefix}-porter-unicode61` });
     docCount = docs;
