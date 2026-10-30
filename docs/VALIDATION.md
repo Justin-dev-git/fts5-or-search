@@ -1088,3 +1088,340 @@ same runs; E5 assessed without the line-count criterion:
 
 ΔnDCG@10 of `hybrid-trigram` against `or-trigram`: GermanDPR
 0.5257 − 0.5338 = **−0.0081**; GovService 0.7489 − 0.7628 = **−0.0139**.
+
+## T21 – German stopwords (Snowball) and German scale (mMARCO-de)
+
+Question: does the German result of T16–T18 hold with a complete stopword
+list and on a large corpus? The 94-word list of T16–T18 (`STOPWORDS` of
+german-fts5-stemmer, until T21 identical with `STOPWORDS_DE`) lacks frequent
+function words: on the mMARCO-de 100 000 subset "in" occurs in 50.1 % of the
+passages and in 137 of 1 000 queries, "sie" in 38.3 %, "es" in 24.9 %,
+"wird" in 18.2 %; 212 of 1 000 queries contain at least one query term with a
+document frequency above 5 %. Every such OR query makes FTS5 score a large
+part of the corpus.
+
+Change: `STOPWORDS_DE` = the 94 words + the Snowball German stop word list
+(`snowballstem.org/algorithms/german/stop.txt`, BSD-3-Clause, 231 words,
+sha256 `22a7785b53860256280fba74b93d8f09a0f3a8f52edaa3cdc3750e8c13a3874c`)
++ the spellings without umlaut of its words = 259 entries: the 231 Snowball
+words plus 28 more (25 words of the 94-word list that Snowball lacks, such as
+"wurde", "seit", "dass", "beim" and the English function words, and
+"konnen", "konnte", "wahrend"). Nothing was tuned on any dataset; the
+Snowball list was taken as published. It has "viel" but not "viele" or
+"vielen", and "weg" and "waren" are also nouns ("Weg", "Waren").
+`beir-bench --stopwords lib` uses `STOPWORDS_DE` for every German lane; the
+stemmer lanes get the query without those words, and stemmer variants that
+are in `STOPWORDS_DE` are dropped. `--stopwords stemmer` (default) is the
+list of T16–T19.
+
+Code: commit `92eb6174a4c925dc6848a66cff08d8f53e28a596` for every lane
+except the stemmer lanes with the new list, which ran at
+`ac4ccba` after the review fix below (same code for every other lane).
+Stemmer: `17e64135d75c6948baa113479e80548cc93ba74c`. Machine: `nproc` 20,
+121 GiB RAM, Node v24.22.1, SQLite 3.53.4. A local LLM server ran on the same
+machine (shared CPU/GPU memory): a vLLM model, and from 13:36 another engine
+that loads its model at start; only the old-list run of `hybrid-trigram` at
+1 000 000 (13:34–13:38) overlapped with that start. The two scale runs (old
+and new list) ran in parallel, each pinned to its own core (`taskset`); the
+GermanDPR/GovService runs ran on a third core at the same time. Latencies
+are from one loaded machine.
+
+### Review fix (stemmer lanes with the new list)
+
+The review of T21 found that with `--stopwords lib` the stemmer lanes still
+got stopwords back: as stemmer variants ("viele" also yields "viel",
+"ausmachen" yields "machen", "Änderung" yields "ander") and as hyphen parts
+("Check-in" yields "in", "Vor-" yields "vor"). After the fix the stemmer
+groups change for 70 of 1 025 GermanDPR, 13 of 357 GovService and 13 of
+1 000 mMARCO-de questions. `or-stem`, `or-stem-paradigm` (GermanDPR,
+GovService) and `hybrid-expanded` were measured again with the fixed code;
+the tables below show the new values. Their p95 ratios to `or` therefore
+compare two runs. Values before the fix (nDCG@10): `or-stem` 0.4891, 0.7169,
+0.6333, 0.4850, 0.3197 and `hybrid-expanded` 0.5307, 0.7401, 0.6410, 0.5087,
+0.3451 (GermanDPR, GovService, mMARCO-de 10 000, 100 000, 1 000 000).
+
+### Data (mMARCO)
+
+`unicamp-dl/mmarco`, revision `6d039c4638c0ba3e46a9cb7b498b145e7edc6230`
+(Hugging Face API; `cardData.license` not set — MS MARCO: non-commercial
+research only, the data is not part of this repository). Files from
+`resolve/main/data/` (`google/collections/…`, `google/queries/dev/…`,
+`qrels.dev.small.tsv`):
+
+```
+86e0c5820be6b22280337a67e54cbb626645453d9ac3c377bac45abb81c5653d  english_collection.tsv
+60d93b172e1ebd6b7c2d04b4b64fd25e8bc140b94dfedf71d6b04c0081a1d87f  german_collection.tsv
+988cb8424d997bd5cf829753de7dfe7496efcdba318186c5d904a2d5c410d2e7  english_queries.dev.small.tsv
+ac54aadb7258254cc641a1a91a56933ade78509799f481f32331d00740bdab42  german_queries.dev.small.tsv
+ddc607dbe7b748d7168e8675a242f0811d47febaa2e69d3af09d7ab249c68d7e  qrels.dev.small.tsv
+```
+
+Conversion (`scripts/to-beir.mjs --format msmarco-tsv`), English and
+German, both equal to the reference of T19: `docs=8841823 queries=6980
+qrels=7437`. Subsets (`scripts/subsample-beir.mjs`, the same for both
+languages): `docs=10000|100000|1000000 queries=1000 qrels=1053 rel_docs=1053
+missing_rel=0`. id sequence identical for en and de at every size
+(`results/idhash.txt`, size, en, de):
+
+```
+1000000 d8f65c13b77f252d2ed327e2d9c0612d3e1dbd2478bf62cf05a152eff75532e5 d8f65c13b77f252d2ed327e2d9c0612d3e1dbd2478bf62cf05a152eff75532e5
+100000 2dd56dd62ff567ceae2b14112e1528a83bdc7738a27a4ea1ec1326da6b342ee0 2dd56dd62ff567ceae2b14112e1528a83bdc7738a27a4ea1ec1326da6b342ee0
+10000 6983221e7679cbc4fddcba9109c812369cd61e9ca57c443af45e21bb600fba8d 6983221e7679cbc4fddcba9109c812369cd61e9ca57c443af45e21bb600fba8d
+```
+
+Commands (`$SCALE_DIR` holds `beir/{en,de}-full`; the subsets were reused
+from an earlier run with the same tooling; the review fix resumed the
+`t21-lib` run after its two stemmer lanes had been moved away):
+
+```
+SCALE_DIR=$SCALE_DIR/t21-stemmer STEMMER="$STEMMER" FULL=0 EN_LANES=and DE_STOPWORDS=stemmer bash scripts/scale-run.sh
+SCALE_DIR=$SCALE_DIR/t21-lib STEMMER="$STEMMER" FULL=0 EN_LANES=and DE_STOPWORDS=lib bash scripts/scale-run.sh
+node scripts/beir-bench.mjs --data <germandpr|govservice> --lang de --stemmer "$STEMMER" --stopwords <stemmer|lib> --repeat 3 --per-query <file> --json
+node scripts/beir-bench.mjs --data <germandpr|govservice> --lang de --stemmer "$STEMMER" --stopwords lib --repeat 3 --lanes or-stem,or-stem-paradigm,hybrid-expanded --json
+```
+
+Control: with `--stopwords stemmer` every lane reproduces T16–T18 exactly
+(GermanDPR `or` 0.4797, `or-trigram` 0.5338, `hybrid-expanded` 0.5227;
+GovService `or` 0.6937, `or-trigram` 0.7628, `hybrid-expanded` 0.7123).
+
+### mMARCO-de, new list (`DE_STOPWORDS=lib`, `results/summary.md`)
+
+| size | docs | queries | lane | nDCG@10 | MRR@10 | Recall@100 | P@10 | p50 ms | p95 ms |
+|---|---:|---:|---|---:|---:|---:|---:|---:|---:|
+| 10000 | 10000 | 1000 | and | 0.1853 | 0.1870 | 0.1888 | 0.0195 | 0.02 | 0.06 |
+| 10000 | 10000 | 1000 | or | 0.6022 | 0.5833 | 0.7255 | 0.0707 | 0.24 | 0.46 |
+| 10000 | 10000 | 1000 | or-stem | 0.6332 | 0.6082 | 0.7992 | 0.0761 | 0.36 | 0.97 |
+| 10000 | 10000 | 1000 | or-trigram | 0.6277 | 0.6074 | 0.7675 | 0.0737 | 1.30 | 3.04 |
+| 10000 | 10000 | 1000 | hybrid | 0.6036 | 0.5843 | 0.7107 | 0.0710 | 0.21 | 0.43 |
+| 10000 | 10000 | 1000 | hybrid-expanded | 0.6419 | 0.6185 | 0.7827 | 0.0767 | 0.31 | 0.93 |
+| 10000 | 10000 | 1000 | hybrid-trigram | 0.6163 | 0.5943 | 0.7505 | 0.0732 | 1.25 | 2.96 |
+| 100000 | 100000 | 1000 | and | 0.1783 | 0.1793 | 0.1888 | 0.0190 | 0.06 | 0.20 |
+| 100000 | 100000 | 1000 | or | 0.4948 | 0.4748 | 0.6730 | 0.0600 | 0.74 | 2.24 |
+| 100000 | 100000 | 1000 | or-stem | 0.4848 | 0.4548 | 0.7340 | 0.0625 | 1.08 | 4.28 |
+| 100000 | 100000 | 1000 | or-trigram | 0.5069 | 0.4855 | 0.6983 | 0.0617 | 7.99 | 21.30 |
+| 100000 | 100000 | 1000 | hybrid | 0.4954 | 0.4739 | 0.6505 | 0.0610 | 0.65 | 2.16 |
+| 100000 | 100000 | 1000 | hybrid-expanded | 0.5088 | 0.4842 | 0.7056 | 0.0636 | 1.06 | 4.21 |
+| 100000 | 100000 | 1000 | hybrid-trigram | 0.4957 | 0.4759 | 0.6683 | 0.0604 | 8.01 | 21.35 |
+| 1000000 | 1000000 | 1000 | and | 0.1508 | 0.1468 | 0.1838 | 0.0176 | 0.21 | 1.44 |
+| 1000000 | 1000000 | 1000 | or | 0.3493 | 0.3258 | 0.5719 | 0.0454 | 6.43 | 24.72 |
+| 1000000 | 1000000 | 1000 | or-stem | 0.3197 | 0.2960 | 0.6072 | 0.0425 | 9.43 | 37.21 |
+| 1000000 | 1000000 | 1000 | or-trigram | 0.3500 | 0.3283 | 0.5854 | 0.0450 | 67.69 | 188.39 |
+| 1000000 | 1000000 | 1000 | hybrid | 0.3504 | 0.3305 | 0.5403 | 0.0448 | 6.23 | 24.55 |
+| 1000000 | 1000000 | 1000 | hybrid-expanded | 0.3451 | 0.3238 | 0.5503 | 0.0445 | 9.32 | 37.14 |
+| 1000000 | 1000000 | 1000 | hybrid-trigram | 0.3421 | 0.3213 | 0.5542 | 0.0441 | 67.68 | 189.36 |
+
+| size | index | build s | size MB |
+|---|---|---:|---:|
+| 10000 | unicode61 | 0.1 | 7.22 |
+| 10000 | trigram | 0.3 | 20.38 |
+| 100000 | unicode61 | 1.1 | 67.47 |
+| 100000 | trigram | 3.9 | 188.87 |
+| 1000000 | unicode61 | 12.4 | 663.22 |
+| 1000000 | trigram | 51.5 | 1942.40 |
+
+### mMARCO-de, old list (`DE_STOPWORDS=stemmer`, `results/summary.md`)
+
+| size | docs | queries | lane | nDCG@10 | MRR@10 | Recall@100 | P@10 | p50 ms | p95 ms |
+|---|---:|---:|---|---:|---:|---:|---:|---:|---:|
+| 10000 | 10000 | 1000 | and | 0.1733 | 0.1750 | 0.1763 | 0.0181 | 0.03 | 0.08 |
+| 10000 | 10000 | 1000 | or | 0.5997 | 0.5811 | 0.7245 | 0.0704 | 0.30 | 2.57 |
+| 10000 | 10000 | 1000 | or-stem | 0.6318 | 0.6068 | 0.8002 | 0.0760 | 0.41 | 2.91 |
+| 10000 | 10000 | 1000 | or-trigram | 0.6272 | 0.6076 | 0.7685 | 0.0735 | 1.36 | 3.58 |
+| 10000 | 10000 | 1000 | hybrid | 0.5948 | 0.5769 | 0.7107 | 0.0698 | 0.24 | 2.52 |
+| 10000 | 10000 | 1000 | hybrid-expanded | 0.6302 | 0.6075 | 0.7817 | 0.0755 | 0.36 | 3.10 |
+| 10000 | 10000 | 1000 | hybrid-trigram | 0.6087 | 0.5887 | 0.7495 | 0.0719 | 1.34 | 3.47 |
+| 100000 | 100000 | 1000 | and | 0.1668 | 0.1678 | 0.1763 | 0.0176 | 0.07 | 0.28 |
+| 100000 | 100000 | 1000 | or | 0.4937 | 0.4753 | 0.6720 | 0.0595 | 1.00 | 26.76 |
+| 100000 | 100000 | 1000 | or-stem | 0.4837 | 0.4543 | 0.7300 | 0.0622 | 1.46 | 27.98 |
+| 100000 | 100000 | 1000 | or-trigram | 0.5062 | 0.4844 | 0.6953 | 0.0618 | 8.43 | 26.68 |
+| 100000 | 100000 | 1000 | hybrid | 0.4888 | 0.4694 | 0.6480 | 0.0597 | 0.88 | 26.73 |
+| 100000 | 100000 | 1000 | hybrid-expanded | 0.5024 | 0.4788 | 0.7016 | 0.0627 | 1.31 | 27.79 |
+| 100000 | 100000 | 1000 | hybrid-trigram | 0.4889 | 0.4689 | 0.6683 | 0.0598 | 8.24 | 26.28 |
+| 1000000 | 1000000 | 1000 | and | 0.1432 | 0.1395 | 0.1713 | 0.0166 | 0.25 | 2.31 |
+| 1000000 | 1000000 | 1000 | or | 0.3468 | 0.3225 | 0.5689 | 0.0454 | 9.31 | 266.96 |
+| 1000000 | 1000000 | 1000 | or-stem | 0.3159 | 0.2918 | 0.6052 | 0.0422 | 14.03 | 278.70 |
+| 1000000 | 1000000 | 1000 | or-trigram | 0.3492 | 0.3269 | 0.5854 | 0.0451 | 72.33 | 270.92 |
+| 1000000 | 1000000 | 1000 | hybrid | 0.3441 | 0.3239 | 0.5378 | 0.0442 | 9.00 | 267.06 |
+| 1000000 | 1000000 | 1000 | hybrid-expanded | 0.3400 | 0.3180 | 0.5473 | 0.0441 | 13.76 | 279.32 |
+| 1000000 | 1000000 | 1000 | hybrid-trigram | 0.3367 | 0.3155 | 0.5512 | 0.0436 | 84.73 | 290.68 |
+
+### Old list vs new list (nDCG@10, P@10, p95 ms)
+
+GermanDPR and GovService with `--repeat 3`, mMARCO-de with `--repeat 2`.
+
+| dataset | lane | nDCG@10 old | nDCG@10 new | P@10 old | P@10 new | p95 old | p95 new |
+|---|---|---:|---:|---:|---:|---:|---:|
+| germandpr | and | 0.0263 | 0.0356 | 0.0035 | 0.0045 | 0.09 | 0.08 |
+| germandpr | or | 0.4797 | 0.4807 | 0.0816 | 0.0819 | 2.06 | 0.83 |
+| germandpr | or-stem | 0.4874 | 0.4895 | 0.0808 | 0.0811 | 2.81 | 1.94 |
+| germandpr | or-trigram | 0.5338 | 0.5350 | 0.0856 | 0.0860 | 4.68 | 4.21 |
+| germandpr | hybrid | 0.5160 | 0.5192 | 0.0832 | 0.0838 | 2.02 | 0.80 |
+| germandpr | hybrid-expanded | 0.5227 | 0.5313 | 0.0813 | 0.0826 | 2.46 | 1.24 |
+| germandpr | hybrid-trigram | 0.5257 | 0.5292 | 0.0823 | 0.0830 | 4.73 | 4.20 |
+| govservice | and | 0.0753 | 0.1005 | 0.0078 | 0.0104 | 0.03 | 0.03 |
+| govservice | or | 0.6937 | 0.7280 | 0.0866 | 0.0880 | 0.44 | 0.24 |
+| govservice | or-stem | 0.6968 | 0.7169 | 0.0877 | 0.0894 | 3.16 | 1.51 |
+| govservice | or-trigram | 0.7628 | 0.7629 | 0.0905 | 0.0905 | 0.73 | 0.50 |
+| govservice | hybrid | 0.7217 | 0.7420 | 0.0874 | 0.0885 | 0.53 | 0.37 |
+| govservice | hybrid-expanded | 0.7123 | 0.7401 | 0.0880 | 0.0888 | 0.87 | 0.77 |
+| govservice | hybrid-trigram | 0.7489 | 0.7645 | 0.0902 | 0.0910 | 0.81 | 0.68 |
+| mmarco-de-10000 | and | 0.1733 | 0.1853 | 0.0181 | 0.0195 | 0.08 | 0.06 |
+| mmarco-de-10000 | or | 0.5997 | 0.6022 | 0.0704 | 0.0707 | 2.57 | 0.46 |
+| mmarco-de-10000 | or-stem | 0.6318 | 0.6332 | 0.0760 | 0.0761 | 2.91 | 0.97 |
+| mmarco-de-10000 | or-trigram | 0.6272 | 0.6277 | 0.0735 | 0.0737 | 3.58 | 3.04 |
+| mmarco-de-10000 | hybrid | 0.5948 | 0.6036 | 0.0698 | 0.0710 | 2.52 | 0.43 |
+| mmarco-de-10000 | hybrid-expanded | 0.6302 | 0.6419 | 0.0755 | 0.0767 | 3.10 | 0.93 |
+| mmarco-de-10000 | hybrid-trigram | 0.6087 | 0.6163 | 0.0719 | 0.0732 | 3.47 | 2.96 |
+| mmarco-de-100000 | and | 0.1668 | 0.1783 | 0.0176 | 0.0190 | 0.28 | 0.20 |
+| mmarco-de-100000 | or | 0.4937 | 0.4948 | 0.0595 | 0.0600 | 26.76 | 2.24 |
+| mmarco-de-100000 | or-stem | 0.4837 | 0.4848 | 0.0622 | 0.0625 | 27.98 | 4.28 |
+| mmarco-de-100000 | or-trigram | 0.5062 | 0.5069 | 0.0618 | 0.0617 | 26.68 | 21.30 |
+| mmarco-de-100000 | hybrid | 0.4888 | 0.4954 | 0.0597 | 0.0610 | 26.73 | 2.16 |
+| mmarco-de-100000 | hybrid-expanded | 0.5024 | 0.5088 | 0.0627 | 0.0636 | 27.79 | 4.21 |
+| mmarco-de-100000 | hybrid-trigram | 0.4889 | 0.4957 | 0.0598 | 0.0604 | 26.28 | 21.35 |
+| mmarco-de-1000000 | and | 0.1432 | 0.1508 | 0.0166 | 0.0176 | 2.31 | 1.44 |
+| mmarco-de-1000000 | or | 0.3468 | 0.3493 | 0.0454 | 0.0454 | 266.96 | 24.72 |
+| mmarco-de-1000000 | or-stem | 0.3159 | 0.3197 | 0.0422 | 0.0425 | 278.70 | 37.21 |
+| mmarco-de-1000000 | or-trigram | 0.3492 | 0.3500 | 0.0451 | 0.0450 | 270.92 | 188.39 |
+| mmarco-de-1000000 | hybrid | 0.3441 | 0.3504 | 0.0442 | 0.0448 | 267.06 | 24.55 |
+| mmarco-de-1000000 | hybrid-expanded | 0.3400 | 0.3451 | 0.0441 | 0.0445 | 279.32 | 37.14 |
+| mmarco-de-1000000 | hybrid-trigram | 0.3367 | 0.3421 | 0.0436 | 0.0441 | 290.68 | 189.36 |
+
+### E5 facts with the new list (each lane vs `or`, both with `STOPWORDS_DE`)
+
+ΔnDCG@10 / ΔP@10 / p95 ratio. `or-stem` was selected on GermanDPR in T16, so
+GermanDPR is tuned for it; every other cell is untuned.
+
+| lane | germandpr | govservice | mmarco-de-10000 | mmarco-de-100000 | mmarco-de-1000000 |
+|---|---:|---:|---:|---:|---:|
+| or-stem | +0.0088 / -0.0008 / 2.34× | -0.0111 / +0.0014 / 6.29× | +0.0310 / +0.0054 / 2.11× | -0.0100 / +0.0025 / 1.91× | -0.0296 / -0.0029 / 1.51× |
+| or-trigram | +0.0543 / +0.0041 / 5.07× | +0.0349 / +0.0025 / 2.08× | +0.0255 / +0.0030 / 6.61× | +0.0121 / +0.0017 / 9.51× | +0.0007 / -0.0004 / 7.62× |
+| hybrid | +0.0385 / +0.0019 / 0.96× | +0.0140 / +0.0005 / 1.54× | +0.0014 / +0.0003 / 0.93× | +0.0006 / +0.0010 / 0.96× | +0.0011 / -0.0006 / 0.99× |
+| hybrid-expanded | +0.0506 / +0.0007 / 1.49× | +0.0121 / +0.0008 / 3.21× | +0.0397 / +0.0060 / 2.02× | +0.0140 / +0.0036 / 1.88× | -0.0042 / -0.0009 / 1.50× |
+| hybrid-trigram | +0.0485 / +0.0011 / 5.06× | +0.0365 / +0.0030 / 2.83× | +0.0141 / +0.0025 / 6.43× | +0.0009 / +0.0004 / 9.53× | -0.0072 / -0.0013 / 7.66× |
+
+### Per-query compares, mMARCO-de, new list (`results/compare-*.txt`)
+
+de-100000:
+```
+or vs and: W=395 T=602 L=3
+terms 1-3  n=790  W=258 T=529 L=3  or: ndcg@10=0.4628 p@10=0.0562  and: ndcg@10=0.2097 p@10=0.0224
+terms 4-6  n=205  W=133 T=72 L=0  or: ndcg@10=0.6059 p@10=0.0737  and: ndcg@10=0.0566 p@10=0.0059
+terms 7+  n=5  W=4 T=1 L=0  or: ndcg@10=1.0000 p@10=0.1000  and: ndcg@10=0.2000 p@10=0.0200
+```
+
+de-100000:
+```
+or-trigram vs or: W=122 T=748 L=130
+terms 1-3  n=790  W=92 T=601 L=97  or-trigram: ndcg@10=0.4781 p@10=0.0582  or: ndcg@10=0.4628 p@10=0.0562
+terms 4-6  n=205  W=30 T=142 L=33  or-trigram: ndcg@10=0.6060 p@10=0.0741  or: ndcg@10=0.6059 p@10=0.0737
+terms 7+  n=5  W=0 T=5 L=0  or-trigram: ndcg@10=1.0000 p@10=0.1000  or: ndcg@10=1.0000 p@10=0.1000
+```
+
+de-100000:
+```
+or-stem vs or: W=82 T=769 L=149
+terms 1-3  n=790  W=71 T=596 L=123  or-stem: ndcg@10=0.4556 p@10=0.0591  or: ndcg@10=0.4628 p@10=0.0562
+terms 4-6  n=205  W=11 T=168 L=26  or-stem: ndcg@10=0.5846 p@10=0.0746  or: ndcg@10=0.6059 p@10=0.0737
+terms 7+  n=5  W=0 T=5 L=0  or-stem: ndcg@10=1.0000 p@10=0.1000  or: ndcg@10=1.0000 p@10=0.1000
+```
+
+de-100000:
+```
+hybrid vs or: W=55 T=880 L=65
+terms 1-3  n=790  W=35 T=716 L=39  hybrid: ndcg@10=0.4648 p@10=0.0573  or: ndcg@10=0.4628 p@10=0.0562
+terms 4-6  n=205  W=20 T=159 L=26  hybrid: ndcg@10=0.6010 p@10=0.0741  or: ndcg@10=0.6059 p@10=0.0737
+terms 7+  n=5  W=0 T=5 L=0  hybrid: ndcg@10=1.0000 p@10=0.1000  or: ndcg@10=1.0000 p@10=0.1000
+```
+
+de-100000:
+```
+hybrid-expanded vs or: W=132 T=735 L=133
+terms 1-3  n=790  W=100 T=585 L=105  hybrid-expanded: ndcg@10=0.4790 p@10=0.0599  or: ndcg@10=0.4628 p@10=0.0562
+terms 4-6  n=205  W=32 T=145 L=28  hybrid-expanded: ndcg@10=0.6118 p@10=0.0771  or: ndcg@10=0.6059 p@10=0.0737
+terms 7+  n=5  W=0 T=5 L=0  hybrid-expanded: ndcg@10=1.0000 p@10=0.1000  or: ndcg@10=1.0000 p@10=0.1000
+```
+
+de-1000000:
+```
+or vs and: W=274 T=720 L=6
+terms 1-3  n=790  W=165 T=620 L=5  or: ndcg@10=0.3229 p@10=0.0419  and: ndcg@10=0.1754 p@10=0.0206
+terms 4-6  n=205  W=105 T=99 L=1  or: ndcg@10=0.4372 p@10=0.0576  and: ndcg@10=0.0548 p@10=0.0059
+terms 7+  n=5  W=4 T=1 L=0  or: ndcg@10=0.9262 p@10=0.1000  and: ndcg@10=0.2000 p@10=0.0200
+```
+
+de-1000000:
+```
+or-trigram vs or: W=120 T=748 L=132
+terms 1-3  n=790  W=87 T=609 L=94  or-trigram: ndcg@10=0.3229 p@10=0.0419  or: ndcg@10=0.3229 p@10=0.0419
+terms 4-6  n=205  W=33 T=134 L=38  or-trigram: ndcg@10=0.4405 p@10=0.0556  or: ndcg@10=0.4372 p@10=0.0576
+terms 7+  n=5  W=0 T=5 L=0  or-trigram: ndcg@10=0.9262 p@10=0.1000  or: ndcg@10=0.9262 p@10=0.1000
+```
+
+de-1000000:
+```
+or-stem vs or: W=59 T=791 L=150
+terms 1-3  n=790  W=50 T=631 L=109  or-stem: ndcg@10=0.2981 p@10=0.0396  or: ndcg@10=0.3229 p@10=0.0419
+terms 4-6  n=205  W=9 T=155 L=41  or-stem: ndcg@10=0.3885 p@10=0.0522  or: ndcg@10=0.4372 p@10=0.0576
+terms 7+  n=5  W=0 T=5 L=0  or-stem: ndcg@10=0.9262 p@10=0.1000  or: ndcg@10=0.9262 p@10=0.1000
+```
+
+de-1000000:
+```
+hybrid vs or: W=53 T=893 L=54
+terms 1-3  n=790  W=27 T=733 L=30  hybrid: ndcg@10=0.3230 p@10=0.0414  or: ndcg@10=0.3229 p@10=0.0419
+terms 4-6  n=205  W=25 T=156 L=24  hybrid: ndcg@10=0.4403 p@10=0.0566  or: ndcg@10=0.4372 p@10=0.0576
+terms 7+  n=5  W=1 T=4 L=0  hybrid: ndcg@10=1.0000 p@10=0.1000  or: ndcg@10=0.9262 p@10=0.1000
+```
+
+de-1000000:
+```
+hybrid-expanded vs or: W=103 T=770 L=127
+terms 1-3  n=790  W=70 T=625 L=95  hybrid-expanded: ndcg@10=0.3195 p@10=0.0413  or: ndcg@10=0.3229 p@10=0.0419
+terms 4-6  n=205  W=33 T=141 L=31  hybrid-expanded: ndcg@10=0.4315 p@10=0.0556  or: ndcg@10=0.4372 p@10=0.0576
+terms 7+  n=5  W=0 T=4 L=1  hybrid-expanded: ndcg@10=0.8524 p@10=0.1000  or: ndcg@10=0.9262 p@10=0.1000
+```
+
+### English at the same sizes (`porter unicode61`, T19 tooling at `f0eb469`)
+
+`scale-run.sh` with `EN_LANES="and or"`, same subsets and machine, `--repeat 2`:
+
+| size | docs | queries | lane | nDCG@10 | MRR@10 | Recall@100 | P@10 | p50 ms | p95 ms |
+|---|---:|---:|---|---:|---:|---:|---:|---:|---:|
+| 10000 | 10000 | 1000 | and | 0.1872 | 0.1908 | 0.1891 | 0.0196 | 0.04 | 0.10 |
+| 10000 | 10000 | 1000 | or | 0.8916 | 0.8729 | 0.9845 | 0.1006 | 0.56 | 1.14 |
+| 100000 | 100000 | 1000 | and | 0.1841 | 0.1876 | 0.1891 | 0.0193 | 0.14 | 0.55 |
+| 100000 | 100000 | 1000 | or | 0.7705 | 0.7433 | 0.9600 | 0.0913 | 3.77 | 9.43 |
+| 1000000 | 1000000 | 1000 | and | 0.1709 | 0.1718 | 0.1861 | 0.0187 | 0.81 | 5.40 |
+| 1000000 | 1000000 | 1000 | or | 0.5497 | 0.5107 | 0.8714 | 0.0718 | 44.66 | 118.78 |
+
+| size | index | build s | size MB |
+|---|---|---:|---:|
+| 10000 | porter-unicode61 | 0.1 | 6.32 |
+| 100000 | porter-unicode61 | 0.9 | 59.08 |
+| 1000000 | porter-unicode61 | 10.7 | 590.23 |
+
+### Facts (no recommendation)
+
+- New list vs old list, `or` p95: GermanDPR 2.06 → 0.83 ms, GovService
+  0.44 → 0.24 ms, mMARCO-de 10 000 2.57 → 0.46 ms, 100 000 26.76 → 2.24 ms,
+  1 000 000 266.96 → 24.72 ms. `or` nDCG@10: +0.0010, +0.0343, +0.0025,
+  +0.0011, +0.0025; no German lane loses nDCG@10 with the new list.
+- Growth 100 000 → 1 000 000, new list: `or` p50 0.74 → 6.43 ms (8.7×), p95
+  2.24 → 24.72 ms (11.0×); `or-trigram` p50 7.99 → 67.69 ms (8.5×), p95
+  21.30 → 188.39 ms (8.8×); index unicode61 67.47 → 663.22 MB (9.8×),
+  trigram 188.87 → 1942.40 MB (10.3×). Trigram/unicode61 at 1 000 000: 2.93×.
+- English `or`, 100 000 → 1 000 000: p50 3.77 → 44.66 ms (11.8×), p95 9.43 →
+  118.78 ms (12.6×), index 59.08 → 590.23 MB (10.0×).
+- E5 with the new list: no German lane meets it on every untuned dataset.
+  `or-trigram` exceeds 3× p95 on GermanDPR (5.07×) and on mMARCO-de at
+  every size (6.61×, 9.51×, 7.62×) and gains +0.0007 nDCG@10 at 1 000 000.
+  `hybrid` stays below +0.01 on mMARCO-de at every size (at most +0.0014;
+  +0.0011 at 1 000 000). `hybrid-expanded` meets the nDCG/P@10/p95 parts on
+  GermanDPR, 10 000 and 100 000, exceeds 3× p95 on GovService (3.21×, two
+  runs) and loses at 1 000 000 (−0.0042 / −0.0009). `or-stem` loses on
+  GovService, 100 000 and 1 000 000 (−0.0111, −0.0100, −0.0296).
+  `hybrid-trigram` exceeds 3× p95 and loses at 1 000 000.
+- `or` vs `and` at 1 000 000, new list: 0.3493 vs 0.1508, W=274 T=720 L=6.
+- The full corpus (8 841 823 passages) and the comparison with the published
+  BM25 values follow in their own task.

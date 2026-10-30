@@ -14,6 +14,7 @@ const VARIANTS = {
   fahrrad: ['fahrrad'],
   termin: ['termin'],
   anmeldung: ['anmeldung', 'anmelden'],
+  ausmachen: ['ausmachen', 'machen', 'ausmacht', 'mach'],
 };
 const PARADIGM = {
   beantragte: ['beantragte', 'beantrage', 'beantragen', 'beantragt'],
@@ -24,6 +25,7 @@ const PARADIGM = {
   fahrrad: ['fahrrad', 'fahrrader'],
   termin: ['termin', 'termine', 'terminen'],
   anmeldung: ['anmeldung', 'anmelden'],
+  ausmachen: ['ausmachen', 'ausmacht', 'gemacht', 'mach', 'mache', 'machen', 'macher', 'machs', 'machst', 'macht', 'machte', 'machten'],
 };
 
 export function queryTermVariants(query, { paradigm = false } = {}) {

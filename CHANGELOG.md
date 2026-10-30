@@ -5,6 +5,26 @@ Behavior changes to public functions are marked **Behavior change**.
 
 ## Unreleased
 
+### Behavior change: STOPWORDS_DE complete (T21), German recommendation is plain OR
+- **Behavior change:** `STOPWORDS_DE` grows from 94 to 259 entries: the
+  Snowball German stop word list (231 words, BSD-3-Clause) and the spellings
+  without umlaut of its words are added; all 94 former words stay. Queries
+  that contain words such as "in", "sie", "es", "wird" or "ich" lose those
+  terms. On mMARCO-de with 1 000 000 passages the p95 of `or` fell from
+  266.96 to 24.72 ms; nDCG@10 dropped on no German dataset (T21).
+- German recommendation: OR on `unicode61` with `STOPWORDS_DE`. With the
+  complete list no extension meets E5 on every untuned dataset; the trigram
+  index (recommended since T16) exceeds 3× the p95 of `or` on GermanDPR and
+  mMARCO-de and gains +0.0007 nDCG@10 at 1 000 000 passages. README, ZIEL
+  and `docs/VALIDATION.md` (T21) updated.
+- `scripts/beir-bench.mjs --stopwords stemmer|lib` (German only; default
+  `stemmer` = the list of T16–T19, output unchanged). With `lib` the stemmer
+  lanes also drop stemmer variants that are in `STOPWORDS_DE` (fixed after
+  the review of T21). `DE_STOPWORDS` in `scripts/scale-run.sh`; a resumed run
+  with other parameters than its first start stops (exit 5).
+  `test/stopwords-de.test.mjs` with fixtures `test/fixtures/beir-de-stop` and
+  `test/fixtures/beir-de-stop-lanes` (all eight German lanes).
+
 ### Added: scale tooling (bench and scripts only, no library change)
 - `scripts/beir-bench.mjs` streams `corpus.jsonl` line by line instead of
   reading it into one string, so multi-GB corpora load. New `--db-dir <dir>`

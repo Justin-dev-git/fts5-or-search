@@ -146,3 +146,25 @@ Alle Zahlen stammen aus `docs/VALIDATION.md`, Abschnitte T16 bis T18.
   - Latenz und Indexgröße bei großen deutschen Korpora sind nicht gemessen.
   - Die Messung auf dem privaten Korpus des Owners steht aus. Dessen Index
     nutzt `porter unicode61`.
+
+## Ergebnis Deutsch nach T21 (30.10.2026)
+Alle Zahlen stammen aus `docs/VALIDATION.md`, Abschnitt T21.
+
+- Der Liste aus T16 bis T18 fehlten häufige Funktionswörter, etwa "in"
+  (in 50.1 % der Abschnitte von mMARCO-de 100 000), "sie", "es", "wird".
+  `STOPWORDS_DE` enthält jetzt die Snowball-Liste, zusammen 259 Wörter.
+  Die p95 von `or` bei 1 000 000 Abschnitten fällt von 266.96 auf 24.72 ms.
+  nDCG@10 sinkt auf keinem deutschen Datensatz.
+- Neuer Testdatensatz mMARCO-de (maschinelle Übersetzung von MS MARCO) mit
+  10 000, 100 000 und 1 000 000 Abschnitten, nicht abgestimmt.
+- **E5 mit der vollständigen Liste:** Keine Erweiterung erfüllt es auf jedem
+  nicht abgestimmten Datensatz.
+  - `or-trigram`: p95 5.07-fach (GermanDPR) und 6.61- bis 9.51-fach
+    (mMARCO-de) von `or`; nDCG@10 bei 1 000 000 nur +0.0007.
+  - `hybrid`: auf mMARCO-de höchstens +0.0014.
+  - `hybrid-expanded` (Lane des Owners) und `or-stem`: bei 1 000 000
+    schlechter als `or` (−0.0042 und −0.0296).
+- **Empfehlung Deutsch:** OR auf `unicode61` mit `STOPWORDS_DE`. Trigram
+  bleibt eine Option für kleine Korpora mit vielen Komposita, kostet aber
+  2.93-mal den Index und ein Mehrfaches der Latenz.
+

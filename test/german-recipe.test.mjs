@@ -6,11 +6,10 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { buildOrMatch, STOPWORDS_DE } from '../lib/or-search.mjs';
 
-test('STOPWORDS_DE: 94 function words, raw and folded spellings', () => {
-  assert.equal(STOPWORDS_DE.size, 94);
+test('STOPWORDS_DE: raw and folded spellings (size and T21 words: test/stopwords-de.test.mjs)', () => {
   for (const w of ['der', 'die', 'das', 'für', 'fur', 'über', 'uber', 'wie', 'wo']) assert.ok(STOPWORDS_DE.has(w), w);
   assert.equal(STOPWORDS_DE.has('schon'), false, 'folded it equals "schön"');
-  assert.equal(buildOrMatch('Wo beantrage ich den Ausweis?', { stopwords: STOPWORDS_DE }), '("beantrage" OR "ich" OR "ausweis")');
+  assert.equal(buildOrMatch('Wo beantrage ich den Ausweis?', { stopwords: STOPWORDS_DE }), '("beantrage" OR "ausweis")');
 });
 
 test('trigram recipe finds sub-words and folds umlauts; stopwords keep "die" out of "Dienst"', () => {
