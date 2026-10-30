@@ -33,8 +33,8 @@ every number from `docs/VALIDATION.md`):
 
 Contents: [Introduction](#introduction) · [Results](#results) ·
 [Case study](#case-study-openclaw-memory-and-context) ·
-[How to read the results](#how-to-read-the-results) ·
-[Conclusion](#conclusion) · [Quick start](#quick-start) ·
+[Conclusion](#conclusion) ·
+[How to read the results](#how-to-read-the-results) · [Quick start](#quick-start) ·
 [Other exports](#other-exports) · [Reproduce](#reproduce) ·
 [How this was built](#how-this-was-built) · [License](#license)
 
@@ -77,7 +77,7 @@ per-query comparisons and confidence intervals.
 ## Results
 
 Terms and metrics are explained in
-[How to read the results](#how-to-read-the-results).
+[How to read the results](#how-to-read-the-results) after the conclusion.
 
 ### English
 
@@ -243,8 +243,9 @@ compares — in [docs/VALIDATION.md](docs/VALIDATION.md).
 
 ## Case study: OpenClaw memory and context
 
-On one private OpenClaw installation (only aggregate numbers; details in
-`docs/VALIDATION.md`, T28):
+The numbers come from one private OpenClaw installation (only aggregate
+numbers; details in `docs/VALIDATION.md`, T28). This repository is a library,
+not an OpenClaw plugin; the patch measured here is local to that installation.
 
 - **What the code does.** The memory search scores 0.7 × vector similarity +
   0.3 × FTS5 keyword score; the keyword half joins the words with AND, and a
@@ -265,72 +266,6 @@ On one private OpenClaw installation (only aggregate numbers; details in
   (95 % CI [−0.025, +0.054]); `lcm_grep` mixed (−0.0081 to +0.0384 nDCG@10);
   not adopted.
 - **Limits.** One installation; LLM-written and LLM-judged test material.
-
-## How to read the results
-
-**Method, in five steps.**
-
-1. **Data.** Public test collections with relevance judgments: queries, the
-   documents and, per query, which documents are relevant.
-2. **Lanes.** Each search variant is a *lane* (`or`, `and`, `or-trigram`, …).
-   All lanes of a comparison run in the same process on the same documents
-   and queries (`scripts/beir-bench.mjs`); trigram lanes use their own
-   trigram index.
-3. **Metrics.** Ranking quality and latency per lane (glossary below).
-4. **Decision.** An extension replaces plain OR only if it meets E5 on every
-   dataset of its size class that it was *not* tuned on; parameters are
-   chosen on separate tuning data before the test.
-5. **Confirmation and review.** Promising results are re-measured on further
-   independent data; every change is a task file in `tasks/` with its own
-   check, and the results were reviewed by a second agent.
-
-**Glossary.**
-
-- **FTS5** – SQLite's full-text search extension. A `MATCH` query finds
-  documents; `ORDER BY rank` sorts them by **BM25**, a standard relevance
-  score that weights rare words higher and penalizes long documents.
-- **AND / OR match** – `"solar" AND "panel"` requires every word, `"solar" OR
-  "panel"` any word; BM25 then ranks documents with more and rarer matching
-  words higher.
-- **Tokenizer** – how FTS5 splits text into indexed terms: `unicode61` (words,
-  diacritics folded), `porter unicode61` (English stemming: "running" →
-  "run"), `trigram` (every three-character sequence, so a word also matches
-  inside a longer word).
-- **Stopwords** – frequent function words ("the", "und", "in") left out of
-  the query.
-- **Prefix query** – `"hund"*` matches every word starting with "hund".
-- **Stemmer** – reduces words to a common stem: Porter inside the English
-  index; for German, german-fts5-stemmer adds stem variants to the query
-  (query side only, the index stays unchanged).
-- **Coverage re-rank, pool** – re-order the top results (the *pool*, e.g. the
-  top 50 or 500) by how many query words each result contains. **Blend** –
-  mix the BM25 score with such a coverage score.
-- **Tuned / untuned dataset** – a dataset used to choose a parameter is
-  *tuned* for that lane; only untuned datasets count for the decision.
-- **nDCG@10** – quality of the top 10 results, 0 to 1; relevant documents
-  count more the higher they are ranked. **MRR@10** – mean over the queries
-  of 1 / rank of the first relevant result (0 if none is in the top 10).
-  **P@10** – share of relevant documents among the top 10.
-  **Recall@100** – share of all relevant documents within the top 100.
-- **p50 / p95** – median and 95th-percentile latency per query, in ms.
-- **E5** – the adoption criterion: on every untuned dataset at least +0.01
-  nDCG@10 over plain OR, P@10 not worse, p95 at most 3× that of plain OR or
-  at most 10 ms more, whichever is larger (same run), about 50 lines of
-  library code at most; applied per **size class** (small < 50 000, medium
-  up to 500 000, large above).
-- **95 % CI** – confidence interval of a difference from a paired bootstrap
-  over the queries; if it excludes 0 the difference is unlikely to be chance.
-- **W / T / L** – number of queries where a lane is better / equal / worse.
-- **Known-item test** – a request is written for one known document; the
-  measure is whether and at which rank the search finds it.
-- **Adaptive expansion** – expand the query (stemmer variants, trigram) only
-  if the plain OR match hits at most τ documents.
-- **BEIR** – a standard collection of retrieval benchmarks in one format.
-  **LLM** – large language model.
-- **Vector search, hybrid score** – vector search ranks by the similarity of
-  embedding vectors; a hybrid score mixes it with the keyword score (case
-  study). **@6** – the OpenClaw memory search returns the top 6, so its
-  metrics are taken at 6.
 
 ## Conclusion
 
@@ -404,6 +339,72 @@ did not help in the OpenClaw case study.
 - Purely lexical: no synonyms beyond what stemming or sub-words cover.
 - Datasets are not shipped (licenses: see `docs/VALIDATION.md`).
 - Latencies come from a single machine.
+
+## How to read the results
+
+**Method, in five steps.**
+
+1. **Data.** Public test collections with relevance judgments: queries, the
+   documents and, per query, which documents are relevant.
+2. **Lanes.** Each search variant is a *lane* (`or`, `and`, `or-trigram`, …).
+   All lanes of a comparison run in the same process on the same documents
+   and queries (`scripts/beir-bench.mjs`); trigram lanes use their own
+   trigram index.
+3. **Metrics.** Ranking quality and latency per lane (glossary below).
+4. **Decision.** An extension replaces plain OR only if it meets E5 on every
+   dataset of its size class that it was *not* tuned on; parameters are
+   chosen on separate tuning data before the test.
+5. **Confirmation and review.** Promising results are re-measured on further
+   independent data; every change is a task file in `tasks/` with its own
+   check, and the results were reviewed by a second agent.
+
+**Glossary.**
+
+- **FTS5** – SQLite's full-text search extension. A `MATCH` query finds
+  documents; `ORDER BY rank` sorts them by **BM25**, a standard relevance
+  score that weights rare words higher and penalizes long documents.
+- **AND / OR match** – `"solar" AND "panel"` requires every word, `"solar" OR
+  "panel"` any word; BM25 then ranks documents with more and rarer matching
+  words higher.
+- **Tokenizer** – how FTS5 splits text into indexed terms: `unicode61` (words,
+  diacritics folded), `porter unicode61` (English stemming: "running" →
+  "run"), `trigram` (every three-character sequence, so a word also matches
+  inside a longer word).
+- **Stopwords** – frequent function words ("the", "und", "in") left out of
+  the query.
+- **Prefix query** – `"hund"*` matches every word starting with "hund".
+- **Stemmer** – reduces words to a common stem: Porter inside the English
+  index; for German, german-fts5-stemmer adds stem variants to the query
+  (query side only, the index stays unchanged).
+- **Coverage re-rank, pool** – re-order the top results (the *pool*, e.g. the
+  top 50 or 500) by how many query words each result contains. **Blend** –
+  mix the BM25 score with such a coverage score.
+- **Tuned / untuned dataset** – a dataset used to choose a parameter is
+  *tuned* for that lane; only untuned datasets count for the decision.
+- **nDCG@10** – quality of the top 10 results, 0 to 1; relevant documents
+  count more the higher they are ranked. **MRR@10** – mean over the queries
+  of 1 / rank of the first relevant result (0 if none is in the top 10).
+  **P@10** – share of relevant documents among the top 10.
+  **Recall@100** – share of all relevant documents within the top 100.
+- **p50 / p95** – median and 95th-percentile latency per query, in ms.
+- **E5** – the adoption criterion: on every untuned dataset at least +0.01
+  nDCG@10 over plain OR, P@10 not worse, p95 at most 3× that of plain OR or
+  at most 10 ms more, whichever is larger (same run), about 50 lines of
+  library code at most; applied per **size class** (small < 50 000, medium
+  up to 500 000, large above).
+- **95 % CI** – confidence interval of a difference from a paired bootstrap
+  over the queries; if it excludes 0 the difference is unlikely to be chance.
+- **W / T / L** – number of queries where a lane is better / equal / worse.
+- **Known-item test** – a request is written for one known document; the
+  measure is whether and at which rank the search finds it.
+- **Adaptive expansion** – expand the query (stemmer variants, trigram) only
+  if the plain OR match hits at most τ documents.
+- **BEIR** – a standard collection of retrieval benchmarks in one format.
+  **LLM** – large language model.
+- **Vector search, hybrid score** – vector search ranks by the similarity of
+  embedding vectors; a hybrid score mixes it with the keyword score (case
+  study). **@6** – the OpenClaw memory search returns the top 6, so its
+  metrics are taken at 6.
 
 ## Quick start
 
