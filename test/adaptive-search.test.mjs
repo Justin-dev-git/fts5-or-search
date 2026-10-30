@@ -45,3 +45,18 @@ test('sparse query: expanded groups, stopword variants dropped, coverage re-rank
   // expansion yields no group: plain OR
   assert.deepEqual(ids(adaptiveSearch(search, countUpTo, 'Wetter', getText, { tau: 10, expand: () => [['in']], ...de })), ids(search(buildOrMatch('Wetter', de), 10)));
 });
+
+test('query text handed to expand: lower-cased, stopwords and edge hyphens removed', () => {
+  let seen;
+  const expand = (t) => { seen = t; return []; };
+  adaptiveSearch(search, countUpTo, 'Die Beantragte-', getText, { tau: 10, expand, ...de });
+  assert.equal(seen, 'beantragte');
+});
+
+test('empty and upper-case variants cannot fake coverage', () => {
+  // without the guard, '' is a substring of every text and every row would cover the second group
+  const expand = () => [['termin'], ['WETTER', '']];
+  const rows = adaptiveSearch(search, countUpTo, 'Termin Wetter', getText, { k: 3, tau: 10, expand, ...de });
+  assert.equal(ids(rows)[0], 'd6', 'd6 covers both groups (wetter matched after lower-casing)');
+  assert.ok(!ids(rows).includes('d4'), 'a document without either word never ranks by an empty variant');
+});
