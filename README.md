@@ -67,8 +67,9 @@ fell from 266.96 to 24.72 ms, and nDCG@10 dropped on no German dataset.
 sub-words: „Ausweis“ finds „Personalausweis“. Over `or` it added +0.0543
 (GermanDPR) and +0.0349 (GovService) nDCG@10, on mMARCO-de +0.0255
 (10 000 passages), +0.0121 (100 000) and +0.0007 (1 000 000). It costs 2.93×
-the index size (1 000 000 passages) and 5.07× to 9.51× the p95 of `or` on
-GermanDPR and mMARCO-de (2.08× on GovService). With trigram, query terms
+the index size and 2.08× (GovService) to 9.51× (mMARCO-de, 100 000
+passages) the p95 of `or`; at 1 000 000 passages 188.39 instead of
+24.72 ms. With trigram, query terms
 shorter than three characters match nothing, and `STOPWORDS_DE` keeps short
 function words out of sub-word matching: „die“ would otherwise match inside
 „Dienst“ (`test/german-recipe.test.mjs`; `npm test` checks that your Node
@@ -122,8 +123,10 @@ pool of a normal top-10 search (T18).
 
 Adoption criterion E5 from `docs/ZIEL.md`: an extension over `or` is
 adopted only if it reaches at least +0.01 nDCG@10 on **every** untuned
-dataset, is not worse at P@10, stays within 3× the p95 latency of `or`, and
-costs roughly 50 lines of library code or less. No variant meets it. FiQA
+dataset, is not worse at P@10, has a p95 latency of at most 3× that of `or`
+or at most 10 ms more (whichever is larger, same run; the floor was added in
+T22), and costs roughly 50 lines of library code or less. No variant meets
+it. FiQA
 has almost no titles, which is why `or-title-3` has no value there.
 
 Latency of the `or` lane: p95 26.26 ms on FiQA and 83.63 ms on TREC-COVID,
@@ -153,13 +156,15 @@ GermanDPR, so GermanDPR is tuned for it; every other cell is untuned.
 | `or-trigram` | quoted OR, `trigram remove_diacritics 1` | 0.5350 | 0.7629 | 0.3500 |
 | `hybrid-trigram` | `or-trigram` + substring coverage re-rank | 0.5292 | 0.7645 | 0.3421 |
 
-No lane meets E5 on every untuned dataset: `or-trigram` and `hybrid-trigram`
-exceed 3× the p95 of `or` on GermanDPR and on mMARCO-de; `hybrid` stays
-below +0.01 on mMARCO-de; `or-stem` and `hybrid-expanded` lose on mMARCO-de
-at 1 000 000 passages. With the 94-word list of T16–T18, `or-trigram` met E5
-on GermanDPR and GovService and was the German recommendation; the complete
-list made `or` faster (GermanDPR p95 2.06 → 0.83 ms), so trigram now exceeds
-3× its p95 there (5.07×). Plausibility (T16): `or` with the former list
+No lane meets E5 on every untuned dataset (T22). At 1 000 000 mMARCO-de
+passages every extension misses the +0.01 nDCG@10 threshold (`or-trigram`
++0.0007, `hybrid` +0.0011, `hybrid-expanded` −0.0042, `hybrid-trigram`
+−0.0072, `or-stem` −0.0296), and `or-trigram` exceeds its latency budget
+from 100 000 passages on (p95 21.30 ms against a budget of 12.24 ms).
+`hybrid-expanded` meets E5 on the four smaller test sets but needs
+german-fts5-stemmer as an extra package. With the 94-word list of T16–T18,
+`or-trigram` met E5 on GermanDPR and GovService and was the German
+recommendation; on mMARCO-de it does not. Plausibility (T16): `or` with the former list
 (0.4797 and 0.6937) is close to the BM25 values of NanoMTEB-German (0.4647
 and 0.6132, 200-query subsets).
 
