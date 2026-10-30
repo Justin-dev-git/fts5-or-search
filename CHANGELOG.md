@@ -10,8 +10,9 @@ Behavior changes to public functions are marked **Behavior change**.
   `Case study: OpenClaw memory and context` and `Conclusion`; the former
   `Limitations` section is part of the conclusion.
 - `docs/VALIDATION.md` T28: aggregate numbers from one OpenClaw installation
-  (memory and `lcm_grep` with OR + `STOPWORDS_DE`, transfer of the T26 prefix
-  queries). No queries, documents or content.
+  (OR instead of AND: memory search with `STOPWORDS_DE`, `lcm_grep` with the
+  German stemmer; transfer of the T26 prefix queries). No queries, documents
+  or content.
 - The conclusion names the T26 prefix queries as a measured option for German
   corpora of 50 000 documents or more; the recommendation itself is unchanged.
 

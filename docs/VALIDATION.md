@@ -2788,10 +2788,10 @@ results are sorted by relevance. Judgments were made blind by LLM judges
 | test | metric | AND (production) | OR (patch) | difference [95 % CI] |
 |---|---|---:|---:|---|
 | 34 real requests (14 `memory_search` calls + 20 recall questions), memory | nDCG@6 | 0.767 | 0.800 | +0.033 [−0.024, +0.093], W/T/L 16/7/11 |
-| 100 known-item requests (60 memory, 40 session), memory | MRR@6 | 0.274 | 0.357 | +0.083 [+0.033, +0.135], W/T/L 28/66/6 |
+| 100 known-item requests (targets: 60 memory files, 40 sessions), memory | MRR@6 | 0.274 | 0.357 | +0.083 [+0.033, +0.135], W/T/L 28/66/6 |
 | 100 known-item requests, memory | hit@6 | 51/100 | 56/100 | |
-| 33 recall cases, `lcm_grep` full text | nDCG@10 | 0.557 (recency) / 0.576 (relevance) | 0.748 (relevance) | |
-| 8 recall cases (lcm-bench), `lcm_grep` full text | nDCG@10 | 0.727 | 0.897 | |
+| 33 recall cases, `lcm_grep` full text, AND + stemmer vs. OR + stemmer | nDCG@10 | 0.557 (recency) / 0.576 (relevance) | 0.748 (relevance) | |
+| 8 recall cases (lcm-bench), `lcm_grep` full text, AND + stemmer vs. OR + stemmer | nDCG@10 | 0.727 | 0.897 | |
 
 Known-item requests were written by an LLM for one chosen document each; the
 measure is the rank of that document. The `lcm_grep` cases take relevance from
@@ -2807,15 +2807,20 @@ regular-expression truth sets.
   known-item MRR@6 0.370–0.386, but on the 34 real requests it differed from the
   patch by −0.010 to +0.004 nDCG@6 (intervals include zero) and was not adopted.
 - Limits: one installation, LLM-written and LLM-judged test material, few real
-  requests.
+  requests; `lcm_grep` with only 33 and 8 cases and no confidence intervals.
+  The `lcm_grep` patch acts only when results are sorted by relevance; the
+  plugin's default sort is by date.
 
 ### Transfer of the T26 prefix queries
 
 Same test material, words of at least 4 letters as prefix queries (as
 `or-prefix-4` in T26), each compared with its own baseline in the same run. The
-`lcm_grep` runs are from a later run than the table above: the database had
-grown in between, which changes the regular-expression truth sets, so absolute
-values differ from the table (for example AND, 8 cases: 0.7013 vs. 0.7267).
+`lcm_grep` runs are from a later run than the table above, so absolute values
+differ from it: for the 33 cases AND and OR without stemmer are unchanged, OR +
+stemmer moved from 0.748 to 0.7586; for the 8 cases AND moved from 0.7267 to
+0.7013. In between the database grew (the truth sets are regular expressions
+over it) and the stemmer's local vocabulary may have changed; the cause was not
+isolated, so only differences within the later run are reported.
 
 | test | metric | without prefix | with prefix-4 | difference [95 % CI] |
 |---|---|---:|---:|---|
