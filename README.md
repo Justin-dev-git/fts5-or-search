@@ -81,6 +81,16 @@ function words out of sub-word matching: „die“ would otherwise match inside
 „Dienst“ (`test/german-recipe.test.mjs`; `npm test` checks that your Node
 build supports it).
 
+**Adaptive stemming (measured, needs german-fts5-stemmer).** Expanding only the
+queries whose plain OR match hits at most 1 000 documents — stemmer variants
+plus a coverage re-rank of the top 50, `adaptive-stem-1000` in
+`scripts/beir-bench.mjs` — met the measurable parts of E5 on every untuned
+test set of every size class (T24): +0.0121 (GovService), +0.0397, +0.0180
+and +0.0125 nDCG@10 (mMARCO-de 10 000, 100 000, 1 000 000), at about the
+latency of `or` (p95 24.36 against 24.67 ms at 1 000 000). It is not part of
+the library: it needs german-fts5-stemmer as a runtime dependency, which this
+project excludes so far.
+
 A substring coverage re-rank of the top 50 (`substringCoverageRerank` in
 `scripts/beir-bench.mjs`, not part of the library) added +0.0385 and +0.0140
 nDCG@10 on GermanDPR and GovService, and at most +0.0014 on mMARCO-de.
@@ -262,6 +272,9 @@ state, with all task files and measurements included.
 - German: two small native datasets (2 876 and 105 documents) and mMARCO-de,
   a machine translation with about one judged passage per question.
 - Corpora above 1 000 000 passages are not measured.
+- With 1 000 questions and about one judged passage each, differences below
+  about ±0.016 nDCG@10 at 100 000 and 1 000 000 passages lie within the 95 %
+  interval (T24); size-class results near the +0.01 threshold are uncertain.
 - Purely lexical: no synonyms beyond what stemming or sub-words cover.
 - Datasets are not shipped (licenses: see `docs/VALIDATION.md`).
 - Latencies come from a single machine.

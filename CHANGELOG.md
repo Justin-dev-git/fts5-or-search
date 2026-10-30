@@ -5,6 +5,15 @@ Behavior changes to public functions are marked **Behavior change**.
 
 ## Unreleased
 
+### Added: adaptive bench lanes (T24, bench only, no library change)
+- `scripts/beir-bench.mjs --adaptive-tau <n,...>` (German): `adaptive-trigram-<n>`
+  and `adaptive-stem-<n>` expand only queries whose plain OR match on the
+  `unicode61` index hits at most n documents. `test/adaptive.test.mjs` with
+  fixture `test/fixtures/beir-de-adaptive`.
+- Measured (τ chosen on a separate tuning split): `adaptive-stem-1000` meets
+  the measurable parts of E5 in every size class (+0.0121 to +0.0397 nDCG@10);
+  it needs german-fts5-stemmer and is therefore not in the library.
+
 ### Changed: E5 per size class, German recommendation for small corpora (T23, docs only)
 - E5 is applied per size class: small below 50 000 documents, medium 50 000
   to 500 000, large above. Re-assessed on the existing measurements.

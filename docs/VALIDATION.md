@@ -2132,3 +2132,216 @@ No English extension reaches +0.01 in any class.
 - A German corpus that grows past 50 000 documents needs a new index
   (trigram → `unicode61`); the trigram index is 2.93× the size of the
   `unicode61` index at 1 000 000 passages (T21).
+
+## T24 – Adaptive lanes (expansion for sparse queries)
+
+Question: does an extension help in every size class if it is applied only
+to queries whose plain OR match is sparse? A query is sparse if the OR match
+on the `unicode61` index hits at most τ documents (counted with `LIMIT τ+1`).
+`adaptive-trigram-τ` then takes `or-trigram`, `adaptive-stem-τ` takes
+`hybrid-expanded` (german-fts5-stemmer variants + coverage re-rank); every
+other query takes plain `or`. All lanes use `--stopwords lib`.
+
+Code: commit `d5d2179f2ff53287c5d687d643e0d3b07a813f70` (bench lanes only, no
+library change). Stemmer: `17e64135d75c6948baa113479e80548cc93ba74c`. Same
+machine as T19–T21; during the runs CI test suites and a model download of
+other sessions ran, and the four test sets ran in parallel, each pinned to
+its own core. Latencies are compared only within one run.
+
+### Tuning (τ chosen before the test)
+
+Tuning sets: GermanDPR (the German selection set since T16) and a separate
+mMARCO-de split with the questions 1 001 to 2 000 in qrels order, at 10 000,
+100 000 and 1 000 000 passages (own subsets, `subsample-beir --queries 2000`:
+`docs=10000|100000|1000000 queries=2000 qrels=2100 rel_docs=2100
+missing_rel=0`; 1 000 questions kept per size). Grid τ = 10, 30, 100, 300,
+1 000, 3 000, 10 000; chosen per family: the highest mean ΔnDCG@10 against
+`or` over the four sets, equal weights (`--repeat 1`).
+
+| lane | germandpr | de-10000 | de-100000 | de-1000000 | mean Δ |
+|---|---:|---:|---:|---:|---:|
+| adaptive-trigram-10 | +0.0005 | +0.0030 | +0.0012 | -0.0005 | +0.0010 |
+| adaptive-trigram-30 | +0.0031 | +0.0030 | +0.0006 | -0.0009 | +0.0014 |
+| adaptive-trigram-100 | +0.0131 | +0.0128 | -0.0010 | -0.0004 | +0.0061 |
+| adaptive-trigram-300 | +0.0433 | +0.0241 | -0.0039 | -0.0009 | +0.0157 |
+| adaptive-trigram-1000 | +0.0543 | +0.0360 | +0.0013 | -0.0014 | +0.0226 |
+| adaptive-trigram-3000 | +0.0543 | +0.0357 | +0.0066 | -0.0023 | +0.0236 |
+| adaptive-trigram-10000 | +0.0543 | +0.0357 | +0.0140 | +0.0032 | +0.0268 |
+| adaptive-stem-10 | -0.0016 | +0.0197 | +0.0097 | +0.0069 | +0.0087 |
+| adaptive-stem-30 | +0.0018 | +0.0190 | +0.0108 | +0.0069 | +0.0096 |
+| adaptive-stem-100 | +0.0186 | +0.0268 | +0.0118 | +0.0079 | +0.0163 |
+| adaptive-stem-300 | +0.0463 | +0.0247 | +0.0080 | +0.0080 | +0.0218 |
+| adaptive-stem-1000 | +0.0506 | +0.0259 | +0.0111 | +0.0100 | +0.0244 |
+| adaptive-stem-3000 | +0.0506 | +0.0249 | +0.0040 | +0.0063 | +0.0215 |
+| adaptive-stem-10000 | +0.0506 | +0.0249 | +0.0049 | +0.0093 | +0.0224 |
+| or-trigram (always) | +0.0543 | +0.0357 | +0.0132 | +0.0109 | +0.0285 |
+| hybrid-expanded (always) | +0.0506 | +0.0249 | +0.0045 | +0.0056 | +0.0214 |
+selected: adaptive-trigram tau=10000 (mean Δ 0.0268); adaptive-stem tau=1000 (mean Δ 0.0244)
+
+### Test (questions 1 to 1 000, the T19/T21 subsets; GovService; all lanes in one run per set)
+
+Commands (`--repeat 3` for GovService and GermanDPR, 2 for mMARCO-de):
+
+```
+node scripts/beir-bench.mjs --data <set> --lang de --stemmer "$STEMMER" --stopwords lib --adaptive-tau 10000,1000 --lanes and,or,or-stem,or-trigram,hybrid,hybrid-expanded,hybrid-trigram,adaptive-trigram-10000,adaptive-stem-1000 --db-dir <dir> --repeat <n> --per-query <file> --json
+```
+
+govservice:
+
+```
+lane                    ndcg@10  mrr@10  recall@100  p@10    p50ms  p95ms
+and                     0.1005   0.0994  0.1036      0.0104  0.02   0.03
+or                      0.7280   0.6785  0.9020      0.0880  0.08   0.25
+or-stem                 0.7169   0.6594  0.9160      0.0894  0.21   2.07
+or-trigram              0.7629   0.7162  0.9356      0.0905  0.24   0.51
+hybrid                  0.7420   0.6953  0.9020      0.0885  0.12   0.37
+hybrid-expanded         0.7401   0.6917  0.9160      0.0888  0.24   0.93
+hybrid-trigram          0.7645   0.7171  0.9328      0.0910  0.31   0.67
+adaptive-trigram-10000  0.7629   0.7162  0.9356      0.0905  0.25   0.53
+adaptive-stem-1000      0.7401   0.6917  0.9160      0.0888  0.24   0.70
+```
+
+germandpr:
+
+```
+lane                    ndcg@10  mrr@10  recall@100  p@10    p50ms  p95ms
+and                     0.0356   0.0326  0.0449      0.0045  0.04   0.09
+or                      0.4807   0.3765  0.9473      0.0819  0.63   0.90
+or-stem                 0.4895   0.3898  0.9649      0.0811  0.81   1.82
+or-trigram              0.5350   0.4337  0.9590      0.0860  2.48   4.46
+hybrid                  0.5192   0.4199  0.9307      0.0838  0.56   0.85
+hybrid-expanded         0.5313   0.4390  0.9493      0.0826  0.79   1.30
+hybrid-trigram          0.5292   0.4343  0.9541      0.0830  2.41   4.39
+adaptive-trigram-10000  0.5350   0.4337  0.9590      0.0860  2.54   4.54
+adaptive-stem-1000      0.5313   0.4390  0.9493      0.0826  0.82   1.35
+```
+
+de-10000:
+
+```
+lane                    ndcg@10  mrr@10  recall@100  p@10    p50ms  p95ms
+and                     0.1853   0.1870  0.1888      0.0195  0.03   0.06
+or                      0.6022   0.5833  0.7255      0.0707  0.24   0.47
+or-stem                 0.6332   0.6082  0.7992      0.0761  0.36   0.95
+or-trigram              0.6277   0.6074  0.7675      0.0737  1.32   3.06
+hybrid                  0.6036   0.5843  0.7107      0.0710  0.21   0.42
+hybrid-expanded         0.6419   0.6185  0.7827      0.0767  0.30   0.69
+hybrid-trigram          0.6163   0.5943  0.7505      0.0732  1.26   2.96
+adaptive-trigram-10000  0.6277   0.6074  0.7675      0.0737  1.35   3.10
+adaptive-stem-1000      0.6419   0.6185  0.7827      0.0767  0.33   0.74
+```
+
+de-100000:
+
+```
+lane                    ndcg@10  mrr@10  recall@100  p@10    p50ms  p95ms
+and                     0.1783   0.1793  0.1888      0.0190  0.06   0.20
+or                      0.4948   0.4748  0.6730      0.0600  0.75   2.26
+or-stem                 0.4848   0.4548  0.7340      0.0625  1.11   4.40
+or-trigram              0.5069   0.4855  0.6983      0.0617  8.11   21.57
+hybrid                  0.4954   0.4739  0.6505      0.0610  0.64   2.18
+hybrid-expanded         0.5088   0.4842  0.7056      0.0636  0.97   3.23
+hybrid-trigram          0.4957   0.4759  0.6683      0.0604  7.95   21.36
+adaptive-trigram-10000  0.5069   0.4855  0.6983      0.0617  8.21   21.69
+adaptive-stem-1000      0.5128   0.4890  0.7028      0.0633  0.98   2.53
+```
+
+de-1000000:
+
+```
+lane                    ndcg@10  mrr@10  recall@100  p@10    p50ms  p95ms
+and                     0.1508   0.1468  0.1838      0.0176  0.21   1.44
+or                      0.3493   0.3258  0.5719      0.0454  6.45   24.67
+or-stem                 0.3197   0.2960  0.6072      0.0425  9.08   37.29
+or-trigram              0.3500   0.3283  0.5854      0.0450  67.72  190.72
+hybrid                  0.3504   0.3305  0.5403      0.0448  6.19   24.39
+hybrid-expanded         0.3451   0.3238  0.5503      0.0445  8.86   36.13
+hybrid-trigram          0.3421   0.3213  0.5542      0.0441  67.73  190.06
+adaptive-trigram-10000  0.3430   0.3205  0.5694      0.0441  19.95  113.05
+adaptive-stem-1000      0.3618   0.3379  0.5889      0.0468  6.86   24.36
+```
+
+### E5 per size class (T22 latency floor, T23 classes), every lane against `or` of the same run
+
+| lane | test set | class | ΔnDCG@10 | ΔP@10 | p95 lane / `or` ms | budget ms | E5 (excl. lines) |
+|---|---|---|---:|---:|---:|---:|---|
+| `or-stem` | GovService | small | −0.0111 | +0.0014 | 2.07 / 0.25 | 10.25 | not met |
+| `or-stem` | mMARCO-de 10 000 | small | +0.0310 | +0.0054 | 0.95 / 0.47 | 10.47 | met |
+| `or-stem` | mMARCO-de 100 000 | medium | −0.0100 | +0.0025 | 4.40 / 2.26 | 12.26 | not met |
+| `or-stem` | mMARCO-de 1 000 000 | large | −0.0296 | −0.0029 | 37.29 / 24.67 | 74.01 | not met |
+| `or-stem` | GermanDPR | small | +0.0088 | −0.0008 | 1.82 / 0.90 | 10.90 | tuned |
+| `or-trigram` | GovService | small | +0.0349 | +0.0025 | 0.51 / 0.25 | 10.25 | met |
+| `or-trigram` | mMARCO-de 10 000 | small | +0.0255 | +0.0030 | 3.06 / 0.47 | 10.47 | met |
+| `or-trigram` | mMARCO-de 100 000 | medium | +0.0121 | +0.0017 | 21.57 / 2.26 | 12.26 | not met |
+| `or-trigram` | mMARCO-de 1 000 000 | large | +0.0007 | −0.0004 | 190.72 / 24.67 | 74.01 | not met |
+| `or-trigram` | GermanDPR | small | +0.0543 | +0.0041 | 4.46 / 0.90 | 10.90 | met |
+| `hybrid` | GovService | small | +0.0140 | +0.0005 | 0.37 / 0.25 | 10.25 | met |
+| `hybrid` | mMARCO-de 10 000 | small | +0.0014 | +0.0003 | 0.42 / 0.47 | 10.47 | not met |
+| `hybrid` | mMARCO-de 100 000 | medium | +0.0006 | +0.0010 | 2.18 / 2.26 | 12.26 | not met |
+| `hybrid` | mMARCO-de 1 000 000 | large | +0.0011 | −0.0006 | 24.39 / 24.67 | 74.01 | not met |
+| `hybrid` | GermanDPR | small | +0.0385 | +0.0019 | 0.85 / 0.90 | 10.90 | met |
+| `hybrid-expanded` | GovService | small | +0.0121 | +0.0008 | 0.93 / 0.25 | 10.25 | met |
+| `hybrid-expanded` | mMARCO-de 10 000 | small | +0.0397 | +0.0060 | 0.69 / 0.47 | 10.47 | met |
+| `hybrid-expanded` | mMARCO-de 100 000 | medium | +0.0140 | +0.0036 | 3.23 / 2.26 | 12.26 | met |
+| `hybrid-expanded` | mMARCO-de 1 000 000 | large | −0.0042 | −0.0009 | 36.13 / 24.67 | 74.01 | not met |
+| `hybrid-expanded` | GermanDPR | small | +0.0506 | +0.0007 | 1.30 / 0.90 | 10.90 | met |
+| `hybrid-trigram` | GovService | small | +0.0365 | +0.0030 | 0.67 / 0.25 | 10.25 | met |
+| `hybrid-trigram` | mMARCO-de 10 000 | small | +0.0141 | +0.0025 | 2.96 / 0.47 | 10.47 | met |
+| `hybrid-trigram` | mMARCO-de 100 000 | medium | +0.0009 | +0.0004 | 21.36 / 2.26 | 12.26 | not met |
+| `hybrid-trigram` | mMARCO-de 1 000 000 | large | −0.0072 | −0.0013 | 190.06 / 24.67 | 74.01 | not met |
+| `hybrid-trigram` | GermanDPR | small | +0.0485 | +0.0011 | 4.39 / 0.90 | 10.90 | met |
+| `adaptive-trigram-10000` | GovService | small | +0.0349 | +0.0025 | 0.53 / 0.25 | 10.25 | met |
+| `adaptive-trigram-10000` | mMARCO-de 10 000 | small | +0.0255 | +0.0030 | 3.10 / 0.47 | 10.47 | met |
+| `adaptive-trigram-10000` | mMARCO-de 100 000 | medium | +0.0121 | +0.0017 | 21.69 / 2.26 | 12.26 | not met |
+| `adaptive-trigram-10000` | mMARCO-de 1 000 000 | large | −0.0063 | −0.0013 | 113.05 / 24.67 | 74.01 | not met |
+| `adaptive-trigram-10000` | GermanDPR | small | +0.0543 | +0.0041 | 4.54 / 0.90 | 10.90 | tuned |
+| `adaptive-stem-1000` | GovService | small | +0.0121 | +0.0008 | 0.70 / 0.25 | 10.25 | met |
+| `adaptive-stem-1000` | mMARCO-de 10 000 | small | +0.0397 | +0.0060 | 0.74 / 0.47 | 10.47 | met |
+| `adaptive-stem-1000` | mMARCO-de 100 000 | medium | +0.0180 | +0.0033 | 2.53 / 2.26 | 12.26 | met |
+| `adaptive-stem-1000` | mMARCO-de 1 000 000 | large | +0.0125 | +0.0014 | 24.36 / 24.67 | 74.01 | met |
+| `adaptive-stem-1000` | GermanDPR | small | +0.0506 | +0.0007 | 1.35 / 0.90 | 10.90 | tuned |
+
+### Confidence intervals (paired bootstrap, 4 000 resamples, 95 %)
+
+Mean ΔnDCG@10 per question pair and its 95 % interval; "changed" = questions
+whose nDCG@10 differs between the two lanes.
+
+```
+or-trigram − or, 10k, test split: n=1000 mean +0.0255, 95 % CI [+0.0084, +0.0428], changed queries 237
+or-trigram − or, 100k, test split: n=1000 mean +0.0121, 95 % CI [-0.0054, +0.0299], changed queries 252
+or-trigram − or, 100k, tuning split: n=1000 mean +0.0131, 95 % CI [-0.0025, +0.0297], changed queries 261
+or-trigram − or, 1M, test split: n=1000 mean +0.0007, 95 % CI [-0.0156, +0.0168], changed queries 252
+or-trigram − or, 1M, tuning split: n=1000 mean +0.0110, 95 % CI [-0.0041, +0.0261], changed queries 255
+hybrid-expanded − or, 1M, test split: n=1000 mean -0.0042, 95 % CI [-0.0215, +0.0129], changed queries 230
+hybrid-expanded − or, 1M, tuning split: n=1000 mean +0.0056, 95 % CI [-0.0107, +0.0217], changed queries 234
+adaptive-stem-1000 − or, 1M, tuning split: n=1000 mean +0.0101, 95 % CI [+0.0036, +0.0173], changed queries 17
+adaptive-stem-1000 − or, govservice (test): n=357 mean +0.0121, 95 % CI [-0.0097, +0.0341], changed queries 103
+adaptive-stem-1000 − or, de-10000 (test): n=1000 mean +0.0397, 95 % CI [+0.0206, +0.0581], changed queries 249
+adaptive-stem-1000 − or, de-100000 (test): n=1000 mean +0.0180, 95 % CI [+0.0039, +0.0320], changed queries 131
+adaptive-stem-1000 − or, de-1000000 (test): n=1000 mean +0.0124, 95 % CI [+0.0036, +0.0215], changed queries 39
+adaptive-stem-1000 − hybrid-expanded, de-100000 (test): n=1000 mean +0.0040, 95 % CI [-0.0093, +0.0169], changed queries 134
+adaptive-trigram-10000 − or, de-100000 (test): n=1000 mean +0.0121, 95 % CI [-0.0054, +0.0299], changed queries 252
+adaptive-stem-1000 − hybrid-expanded, de-1000000 (test): n=1000 mean +0.0166, 95 % CI [+0.0018, +0.0320], changed queries 191
+adaptive-trigram-10000 − or, de-1000000 (test): n=1000 mean -0.0063, 95 % CI [-0.0175, +0.0049], changed queries 138
+```
+
+### Facts (no recommendation)
+
+- `adaptive-stem-1000` meets the measurable parts of E5 on every untuned
+  test set of every size class: GovService +0.0121, mMARCO-de 10 000
+  +0.0397, 100 000 +0.0180, 1 000 000 +0.0125 nDCG@10, P@10 never worse,
+  p95 at most 0.70 ms against 0.25 ms (GovService) and 24.36 against 24.67 ms
+  (1 000 000). The 95 % intervals against `or` exclude zero at 10 000
+  [+0.0206, +0.0581], 100 000 [+0.0039, +0.0320] and 1 000 000 [+0.0036,
+  +0.0215]; on GovService (357 questions) they do not [−0.0097, +0.0341].
+- At 1 000 000 it changes 39 of 1 000 questions and beats always expanding
+  (`hybrid-expanded`) by +0.0166 [+0.0018, +0.0320].
+- It needs german-fts5-stemmer, a runtime dependency that `docs/ZIEL.md`
+  excludes; the adaptive switch itself is a count query and one condition.
+- `adaptive-trigram-10000` equals `or-trigram` up to 100 000 passages and is
+  below `or` at 1 000 000 (−0.0063, p95 113.05 ms).
+- Resolution: with 1 000 questions and about one judged passage each, the
+  95 % interval of a difference against `or` is about ±0.016 nDCG@10 wide at
+  100 000 and 1 000 000 passages (`or-trigram`: +0.0007 [−0.0156, +0.0168]
+  on the test split and +0.0110 [−0.0041, +0.0261] on the tuning split at
+  1 000 000). Differences around the E5 threshold of +0.01 are within that.
