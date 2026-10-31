@@ -2851,7 +2851,9 @@ becomes `"wort"*`, every other token stays exact (codes, versions, words with
 hyphens); without `prefixMin` (or 0) the output is byte-identical to before; a value
 that is not a non-negative integer throws a `RangeError`. Only the library adds the
 `*`; user input cannot add its own operators. Four lines of code in `buildOrMatch`
-(two of them new), plus comments. The bench lane `or-prefix-<n>` now calls it, and
+(two of them new), plus comments. After the measurement (review): `hybridSearch` and
+`adaptiveSearch`, which pass their options on to `buildOrMatch`, drop `prefixMin`, so
+they behave as in 0.3.0; the lanes measured here do not use them. The bench lane `or-prefix-<n>` now calls it, and
 `--fts-prefix '<lengths>'` builds the `unicode61` index with FTS5 `prefix='<lengths>'`.
 Tests: `test/prefix-lib.test.mjs` (match strings, injection, SQLite with and without a
 prefix index) and `test/prefix.test.mjs` (bench option).
@@ -2871,7 +2873,8 @@ T26 per-query files (same question ids):
 | mMARCO-de 1 000 000 | `or-prefix-4` | 1 000 | 0 | 0 |
 
 The T26 lane joined the terms without the outer parentheses of `buildOrMatch`; FTS5
-parses both forms the same way.
+parses both forms the same way. The index runs below agree with T26 per question as
+well (WebFAQ-de 891 201 and mMARCO-de 1 000 000, every variant).
 
 ```
 dataset=deu-100000 docs=100000 queries=3000 repeat=1
@@ -2900,8 +2903,9 @@ WebFAQ-de 891 201 (3 000 questions) and mMARCO-de 1 000 000 (1 000 questions), l
 repeats is reported), `--report-db`. The three index variants of a set ran one after
 another on the same pinned core. Other work ran on the machine (among others a
 CPU-bound process on another core and the local LLM server), so latencies are compared
-only within a set. The unchanged `or` lane shows the run-to-run spread: p95 50.03 to
-50.34 ms on WebFAQ-de, 25.13 to 26.35 ms on mMARCO-de. Index size and build time are
+only within a set. The `or` lane, whose queries do not change but which runs on the
+larger index too, varied by p95 50.03 to 50.34 ms on WebFAQ-de and 25.13 to 26.35 ms
+on mMARCO-de. Index size and build time are
 those of the `unicode61` index (the bench also builds a trigram index, not used here).
 
 | set | prefix index | index MB | build s | `or` p50 / p95 ms | `or-prefix-4` p50 / p95 ms |
@@ -2915,13 +2919,15 @@ those of the `unicode61` index (the bench also builds a trigram index, not used 
 
 nDCG@10 is the same with every variant (WebFAQ-de: `or` 0.4665, `or-prefix-4` 0.4946;
 mMARCO-de: 0.3493 and 0.3668, as in T26), and per question every nDCG@10 and P@10
-value is identical to the run without prefix index (0 of 6 000 values on WebFAQ-de and
-0 of 2 000 on mMARCO-de differ, per variant).
+value is identical to the run without prefix index and to T26 (0 of 6 000
+question–lane pairs on WebFAQ-de and 0 of 2 000 on mMARCO-de differ, per variant).
 
-FTS5 uses a prefix index only for prefix queries of exactly one of the configured
-lengths (counted in characters); a longer prefix such as `"personalausweis"*` is still
-answered from the main index. The prefix words of the questions (letters only, at
-least 4 letters, after `STOPWORDS_DE`), by length:
+According to the SQLite FTS5 documentation (the `prefix` option), a prefix index
+serves prefix queries of the configured lengths, counted in characters; this was not
+measured directly here. Every prefix query here has at least 4 letters, so `prefix='4'`
+can serve at most the 4-letter prefixes and `prefix='4 5 6 7 8'` none of nine letters
+or more, such as `"personalausweis"*`. The prefix words of the questions (letters
+only, at least 4 letters, after `STOPWORDS_DE`), by length:
 
 | set | prefix words | 4 letters (`prefix='4'`) | 5 to 8 letters | 9 letters or more (no index) | questions with a word of 9+ letters |
 |---|---:|---:|---:|---:|---:|
@@ -2957,13 +2963,18 @@ all queries | 1000 | 13.57 / 47.8 | 11.12 / 43.5 | 12.69 / 42.78
 top-100 ids differ: none vs 4: 0, none vs 4 5 6 7 8: 0
 ```
 
-On WebFAQ-de the questions with a 4-letter prefix word gained with `prefix='4'` (p50
-36.01 → 32.96 ms) while the others did not (14.5 → 15.4 ms). On mMARCO-de both groups
-gained by about the same share (24.19 → 19.34 and 12.05 → 9.59 ms), although the
-index cannot serve the second group; differences of this size are therefore within the
-run-to-run spread. Over all questions the follow-up and the bench runs disagree in
-direction for the p50 (WebFAQ-de with `prefix='4 5 6 7 8'`: 18.34 → 19.19 ms here,
-16.77 → 15.14 ms in the bench run).
+With `prefix='4'` the p95 fell for the questions with a 4-letter prefix word
+(WebFAQ-de 97.39 → 95.2 ms, mMARCO-de 61.65 → 53.17 ms) and stayed the same for the
+others (60.6 → 60.67 and 38.5 → 38.58 ms), as expected if the index serves exactly
+those prefixes. The p50 is less clear: on WebFAQ-de it fell only for the first group
+(36.01 → 32.96 against 14.5 → 15.4 ms); on mMARCO-de it fell by about 20 % for both
+groups (24.19 → 19.34 and 12.05 → 9.59 ms), although the index cannot serve the
+second. The follow-up has no `or` control, so such shifts cannot be told apart from
+drift of the machine. The groups for `prefix='4 5 6 7 8'` do not separate served from
+unserved questions (87.0 % of the WebFAQ-de and 70.5 % of the mMARCO-de questions with
+a word of nine letters or more also have a 4- to 8-letter prefix word) and are not
+interpreted. The follow-up used a measurement script outside the repository with the
+library of commit `6f159a5` (`lib/` identical to `6df9ea2`).
 
 ```
 dataset=deu-all docs=891201 queries=3000 repeat=2
@@ -3027,9 +3038,10 @@ index de-1000000-trigram: build 64.1 s, size 1942.40 MB
 
 ### Facts
 
-- The library option reproduces the T26 lane exactly (0 differing questions on
-  WebFAQ-de 100 000 and mMARCO-de 1 000 000). With four lines of library code the
-  code part of E5 is met.
+- With the library option the lane gives the same nDCG@10 and P@10 as the T26 lane
+  for every question on three sets (WebFAQ-de 100 000 and 891 201, mMARCO-de
+  1 000 000; 0 differences). With four lines of library code the code part of E5 is
+  met.
 - E5 per size class (T23) for `or-prefix-4`: the measurable parts hold on every
   untuned test set of the medium and large classes (T26: mMARCO-de 100 000 +0.0393,
   WebFAQ-de 100 000 +0.0330, mMARCO-de 1 000 000 +0.0174, WebFAQ-de 891 201 +0.0281
@@ -3042,14 +3054,11 @@ index de-1000000-trigram: build 64.1 s, size 1942.40 MB
   index. Below 50 000 documents nothing changes (trigram, provisional, T23).
 - The FTS5 prefix index changes no ranking and costs 1.22 and 1.21 times the index
   size (`prefix='4'`) or 1.82 and 1.78 times (`prefix='4 5 6 7 8'`; WebFAQ-de and
-  mMARCO-de), and 1.5/1.4 or 3.5/3.1 times the build time. Its effect on the
-  latency of `or-prefix-4` is small and not consistent: in the bench runs the p95
-  fell by 4 % and 12 % on WebFAQ-de and by 6 % and 3 % on mMARCO-de. In the follow-up
-  the p50 over all questions moved the other way on WebFAQ-de, where the questions
-  with only 4- to 8-letter prefix words also gained no more from `prefix='4 5 6 7 8'`
-  than those with a word of nine letters or more; on mMARCO-de, with `prefix='4'`,
-  the group the index cannot serve gained as much (about 20 %) as the group it can. `prefix='4'` serves only 7.0 to 8.7 % of the prefix words, and
-  `prefix='4 5 6 7 8'` leaves the 38.9 to 43.5 % with nine letters or more to the main
-  index. The prefix index is not recommended. A plausible reason, not measured: for
-  `ORDER BY rank` FTS5 scores every document that matches a query word, and a prefix
-  index does not reduce the number of matching documents.
+  mMARCO-de), and 1.5/1.4 or 3.5/3.1 times the build time. It lowered the p95 of
+  `or-prefix-4` a little in every comparison (8 of 8, bench runs and follow-up): by
+  1.20 to 8.63 ms (1.7 to 12.0 %), while the p95 of `or` in the bench runs rose by 0.04
+  to 1.22 ms. In the follow-up with `prefix='4'` this p95 gain lies in the questions
+  with a 4-letter prefix word; the p50 moved in both directions. Not recommended: the
+  largest gain, 8.63 ms of p95, is less than the 10 ms that E5 lets an extension add,
+  E5 already holds without the index, and the index costs up to 1.82 times the size
+  and 3.5 times the build time.
