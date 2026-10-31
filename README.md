@@ -22,11 +22,12 @@ every number from `docs/VALIDATION.md`):
   of the tested extensions — coverage re-ranking, BM25/coverage blends,
   title weighting — was measurably better.
 - **German:** OR with `STOPWORDS_DE` (the Snowball German stop word list plus
-  28 more words); below 50 000 documents on a `trigram` index (provisional;
-  not confirmed on GerDaLIRSmall, −0.0006), from 50 000 documents on a
-  `unicode61` index. Prefix queries on the `unicode61` index are a measured
-  option from 50 000 documents (T26), not yet a library function and not yet
-  the recommendation.
+  28 more words). From 50 000 documents on a `unicode61` index with prefix
+  queries for words of at least four letters,
+  `buildOrMatch(q, { stopwords: STOPWORDS_DE, prefixMin: 4 })`: +0.0174 to
+  +0.0393 nDCG@10 over plain OR on the four untuned test sets of the medium
+  and large size classes (T26, T31). Below 50 000 documents on a `trigram` index without prefix
+  queries (provisional; not confirmed on GerDaLIRSmall, −0.0006).
 - **Scale:** latency and index size grow about linearly with the corpus. At
   1 000 000 passages the OR lane had a p95 of 118.78 ms (English) and
   24.72 ms (German), on the full 8 841 823 passages 1 027.75 ms (English).
@@ -151,12 +152,13 @@ to 500 000, large above). **Small** (GermanDPR, GovService, mMARCO-de
 10 000): `or-trigram`, `hybrid-trigram` and `hybrid-expanded` meet it on all
 three; `or-trigram` needs no library code, and the other two are not better
 than it on every set or need german-fts5-stemmer as an extra package.
-**Medium** (mMARCO-de 100 000): only `hybrid-expanded` meets it, on one test
-set and with the extra package; `or-trigram` exceeds its latency budget
-(p95 21.30 ms against 12.24 ms). **Large** (mMARCO-de 1 000 000): every
-extension misses the +0.01 nDCG@10 threshold (`or-trigram` +0.0007,
-`hybrid` +0.0011, `hybrid-expanded` −0.0042, `hybrid-trigram` −0.0072,
-`or-stem` −0.0296). Plausibility (T16): `or` with the former 94-word list
+**Medium** (mMARCO-de 100 000): of the lanes in this table only
+`hybrid-expanded` meets it, on one test set and with the extra package;
+`or-trigram` exceeds its latency budget (p95 21.30 ms against 12.24 ms).
+**Large** (mMARCO-de 1 000 000): every lane in this table misses the +0.01
+nDCG@10 threshold (`or-trigram` +0.0007, `hybrid` +0.0011, `hybrid-expanded`
+−0.0042, `hybrid-trigram` −0.0072, `or-stem` −0.0296). Prefix queries, measured
+later, meet E5 in both classes (T26, T31; see below). Plausibility (T16): `or` with the former 94-word list
 (0.4797 and 0.6937) is close to the BM25 values of NanoMTEB-German (0.4647
 and 0.6132, 200-query subsets).
 
@@ -184,14 +186,20 @@ on GerDaLIRSmall −0.0006 (T25). It costs 2.93× the index size (mMARCO-de
 p95 of `or`; at 1 000 000 passages 188.39 instead of 24.72 ms, on
 GerDaLIRSmall 6191.33 instead of 425.84 ms (T25).
 
-**Sub-word matching: prefix queries (T26).** Every word of at least four
-letters as a prefix query (`"wort"*`) on the normal `unicode61` index:
-+0.0174 to +0.0409 nDCG@10 on 5 of 6 untuned German test sets (mMARCO-de
-1 000 000: 0.3668 against 0.3493), at 1.2 to 3 times the p95 of OR. It meets
-the measurable parts of E5 on every untuned test set of the medium and large
-classes, not in the small class (GerDaLIRSmall +0.0003). A prefix finds
+**Sub-word matching: prefix queries (T26, T31).** Every word of at least four
+letters as a prefix query (`"wort"*`) on the normal `unicode61` index; in the
+library `buildOrMatch(q, { stopwords: STOPWORDS_DE, prefixMin: 4 })`, which gave
+the same result as the T26 lane for every question on the three sets compared
+(T31). +0.0174 to +0.0409 nDCG@10 on 5 of 6 untuned German test sets (mMARCO-de
+1 000 000: 0.3668 against 0.3493), at 1.2 to 3 times the p95 of OR. With four
+lines of library code it meets E5 on every untuned test set of the medium and
+large classes, not in the small class (GerDaLIRSmall +0.0003). A prefix finds
 compounds that start with the query word („Hund“ → „Hundehalter“), not those
-that end with it („Ausweis“ → „Personalausweis“).
+that end with it („Ausweis“ → „Personalausweis“). An FTS5 prefix index
+(`prefix='…'` when the table is created) changes no ranking and lowered the p95 of
+the prefix lane a little in every comparison (by 1.20 to 8.63 ms), at 1.21 to 1.82
+times the index size and 1.4 to 3.5 times the build time (T31); it is not needed
+for E5 and not recommended.
 
 **Adaptive stemming (measured, needs german-fts5-stemmer).** Expanding only
 the queries whose plain OR match hits at most 1 000 documents — stemmer
@@ -315,15 +323,14 @@ did not help in the OpenClaw case study.
 **Recommendation.**
 
 - English: OR on a `porter unicode61` index.
-- German: OR with `STOPWORDS_DE`; below 50 000 documents on a `trigram`
-  index (provisional, T23; not confirmed on GerDaLIRSmall, −0.0006, T25/T26),
-  from 50 000 documents on a `unicode61` index.
-- Measured option for German corpora of 50 000 documents or more (T26: it
-  meets the measurable parts of E5 on every untuned test set of the medium
-  and large classes): the same OR match with prefix queries for words of at
-  least four letters, on the same `unicode61` index. It is not yet a library
-  function and therefore not yet the recommendation; below 50 000 documents
-  it did not hold on every test set.
+- German: OR with `STOPWORDS_DE`; from 50 000 documents on a `unicode61`
+  index with prefix queries for words of at least four letters,
+  `buildOrMatch(q, { stopwords: STOPWORDS_DE, prefixMin: 4 })` (T26, T31: E5
+  met on every untuned test set of the medium and large classes); below
+  50 000 documents on a `trigram` index without prefix queries (provisional,
+  T23; not confirmed on GerDaLIRSmall, −0.0006, T25/T26). The OpenClaw memory
+  index of the case study (2 728 chunks) is in the small class, where the
+  recommendation is unchanged; prefix queries did not help there either (T28).
 
 **Limits and open questions.**
 
@@ -438,17 +445,23 @@ db.exec("CREATE VIRTUAL TABLE docs_fts USING fts5(content, tokenize='unicode61')
 const stmt = db.prepare(
   'SELECT rowid, content FROM docs_fts WHERE docs_fts MATCH ? ORDER BY rank LIMIT ?');
 const q = 'Wo beantrage ich einen neuen Personalausweis?';
-const top10 = stmt.all(buildOrMatch(q, { stopwords: STOPWORDS_DE }), 10);
+const top10 = stmt.all(buildOrMatch(q, { stopwords: STOPWORDS_DE, prefixMin: 4 }), 10);
+// match: ("beantrage"* OR "neuen"* OR "personalausweis"*)
 ```
 
+`prefixMin: 4` turns every word of at least four letters into an FTS5 prefix
+query, so „Hund“ also finds „Hundehalter“; words with digits, dots or hyphens
+(codes, versions) stay exact. This is the recommendation from 50 000 documents
+(T26, T31); the `CREATE VIRTUAL TABLE` above needs no `prefix` option.
 `unicode61` folds umlauts (ä→a) and keeps ß. `STOPWORDS_DE` (259 words) is
 the Snowball German stop word list (BSD-3-Clause), the 94-word list of the
 earlier measurements and the spellings without umlaut; why the complete list
 matters, see [Results](#german).
 
 **Trigram for small corpora (provisional).** Below 50 000 documents use
-`tokenize='trigram remove_diacritics 1'` instead of `unicode61`, with the
-same `buildOrMatch(q, { stopwords: STOPWORDS_DE })` call. The size limit was
+`tokenize='trigram remove_diacritics 1'` instead of `unicode61`, with
+`buildOrMatch(q, { stopwords: STOPWORDS_DE })` and without `prefixMin` (prefix
+queries were measured only on `unicode61`). The size limit was
 set after the measurements (T23); it is confirmed only when a further small
 test set agrees, and GerDaLIRSmall did not (−0.0006, T25). A corpus that
 grows past it needs a new `unicode61` index. With trigram, query terms

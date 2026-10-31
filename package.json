@@ -1,6 +1,6 @@
 {
   "name": "fts5-or-search",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Injection-safe OR match builder for SQLite FTS5 with BM25 ranking, validated on English and German benchmarks up to 8.8M passages against strict AND, re-ranking, stemming, trigram and prefix variants.",
   "type": "module",
   "main": "lib/or-search.mjs",
