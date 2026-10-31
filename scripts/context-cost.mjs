@@ -162,7 +162,7 @@ function main(argv) {
   for (const lane of lanes) {
     const s = summarize(rows, lane, ks);
     res.lanes[lane] = s;
-    console.log([lane, s.empty, pct(s.at1), ...ks.map((k) => pct(s.k[k].inTopK)), pct(s.found), `${s.notFound} (${pct(1 - s.found)})`, s.medianRank ?? '–',
+    console.log([lane, `${s.empty} (${pct(s.empty / s.questions)})`, pct(s.at1), ...ks.map((k) => pct(s.k[k].inTopK)), pct(s.found), `${s.notFound} (${pct(1 - s.found)})`, s.medianRank ?? '–',
       `${int(s.charsToFirst.median)} / ${int(s.charsToFirst.mean)}`,
       ...ks.map((k) => `${s.k[k].calls?.toFixed(2) ?? '–'} / ${s.k[k].snippets?.toFixed(2) ?? '–'} / ${int(s.k[k].chars)}`)].join(' | '));
   }
