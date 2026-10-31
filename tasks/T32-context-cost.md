@@ -10,8 +10,8 @@ verkleinert daher nicht den Kontext je Suche; sie erhöht die Chance, dass das G
 T32 misst das auf der Retrieval-Seite: Rang des ersten relevanten Dokuments, die Zeichen bis dorthin und, in einem
 ausdrücklich benannten Agentenmodell mit k = 6 und k = 10 Treffern je Aufruf, Suchaufrufe und gelesene Zeichen.
 Nicht gemessen wird der Gesamtkontext eines LLM-Agenten (Systemprompt, Werkzeugbeschreibungen, Umformulierungen,
-Antworten); eine Ende-zu-Ende-Messung mit einem echten Agenten plant der Owner getrennt (GPU) – im Repo nur als offene
-Frage.
+Antworten); eine Ende-zu-Ende-Messung mit einem echten Agenten plant der Owner getrennt (GPU) – im Repo nur als offene,
+geplante Frage ohne Zahlen.
 
 Erlaubte Dateien:
 - scripts/beir-bench.mjs
