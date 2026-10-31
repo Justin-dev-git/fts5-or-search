@@ -33,8 +33,9 @@
 //           adaptive-search-<n>, the library's adaptiveSearch with the stemmer
 //           as expansion (returns 10 rows: only the @10 metrics are comparable).
 //   --fts-prefix '<n m ...>'  German only (T31): build the unicode61 index with
-//           FTS5 prefix='<n m ...>' (prefix indexes for prefix queries of exactly
-//           those lengths); index name and reuse marker carry the value.
+//           FTS5 prefix='<n m ...>' (prefix indexes for prefix queries of those
+//           lengths, see the SQLite FTS5 documentation); index name and reuse
+//           marker carry the value.
 //   --prefix-min <n,...>  German only (T26): add the lanes or-prefix-<n>: the
 //           `or` match on unicode61 with every word of at least n letters as an
 //           FTS5 prefix query ("hund"* also finds "hundehalter", "hunde").

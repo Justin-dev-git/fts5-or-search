@@ -8,7 +8,8 @@ Behavior changes to public functions are marked **Behavior change**.
 Since 0.3.0: the option `prefixMin` of `buildOrMatch` and, with it, a new German
 recommendation for corpora of 50 000 documents or more; a measurement of the context
 cost of the retrieval side (bench only). Without `prefixMin` the output of
-`buildOrMatch` is byte-identical to 0.3.0; no other function changed.
+`buildOrMatch` is byte-identical to 0.3.0; no other function changed (`hybridSearch`
+and `adaptiveSearch` ignore `prefixMin`).
 
 ### Added: context cost of the retrieval side (T32, bench only)
 - `scripts/beir-bench.mjs --context-cost <file>` writes, per question and lane, the
@@ -29,8 +30,9 @@ cost of the retrieval side (bench only). Without `prefixMin` the output of
   at least `prefixMin` letters becomes an FTS5 prefix query `"wort"*`; tokens with
   digits, dots or hyphens stay exact; values that are not non-negative integers
   throw a `RangeError`. `test/prefix-lib.test.mjs`.
-- The bench lane `or-prefix-<n>` uses it and gives the T26 result for every
-  question (0 differences on WebFAQ-de 100 000 and mMARCO-de 1 000 000).
+- The bench lane `or-prefix-<n>` uses it; `or-prefix-4` gives the T26 nDCG@10 and
+  P@10 for every question on the three sets compared (WebFAQ-de 100 000 and
+  891 201, mMARCO-de 1 000 000).
 - German from 50 000 documents: `buildOrMatch(q, { stopwords: STOPWORDS_DE,
   prefixMin: 4 })` on `unicode61`. With the library option E5 is met on every
   untuned test set of the medium and large classes (+0.0174 to +0.0393 nDCG@10,
@@ -38,7 +40,9 @@ cost of the retrieval side (bench only). Without `prefixMin` the output of
 - `scripts/beir-bench.mjs --fts-prefix '<lengths>'` builds the `unicode61` index
   with an FTS5 prefix index. Measured on WebFAQ-de 891 201
   and mMARCO-de 1 000 000 with `prefix='4'` and `'4 5 6 7 8'`: no ranking change,
-  1.21 to 1.82 times the index size, no consistent latency gain; not recommended.
+  p95 of `or-prefix-4` 1.20 to 8.63 ms lower, at 1.21 to 1.82 times the index size
+  and 1.4 to 3.5 times the build time; not recommended (the gain is below the 10 ms
+  of E5, and E5 holds without the index).
 
 ### Changed: README order as in Science/Nature (T30, docs only)
 - Summary, introduction, results (with the OpenClaw case study), conclusion; then the

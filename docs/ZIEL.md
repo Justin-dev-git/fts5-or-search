@@ -256,18 +256,22 @@ Alle Zahlen stammen aus `docs/VALIDATION.md`, Abschnitte T26 und T31.
 - **Library-Option:** `buildOrMatch(q, { stopwords, prefixMin: 4 })` macht jedes
   Wort aus nur Buchstaben ab 4 Zeichen zu `"wort"*`, alles andere bleibt exakt;
   vier Code-Zeilen in `buildOrMatch` (zwei neu). Die Bench-Lane `or-prefix-4`
-  nutzt sie und liefert für jede Frage dasselbe Ergebnis wie in T26 (0 von 3 000
-  Fragen auf WebFAQ-de 100 000, 0 von 1 000 auf mMARCO-de 1 000 000).
+  nutzt sie und liefert für jede Frage dasselbe nDCG@10 und P@10 wie in T26 (0
+  Abweichungen auf WebFAQ-de 100 000 und 891 201 und auf mMARCO-de 1 000 000).
 - **E5 für `or-prefix-4` in „mittel“ und „groß“ erfüllt:** die messbaren Teile
   auf allen vier nicht abgestimmten Testsätzen dieser Klassen (T26: +0.0393,
   +0.0330, +0.0174, +0.0281 nDCG@10, Intervalle über null, P@10 nie schlechter,
-  p95 im Budget; in den T31-Läufen wieder im Budget), der Code-Teil mit der
+  p95 im Budget; in den T31-Läufen auf WebFAQ-de 891 201 und mMARCO-de 1 000 000
+  wieder im Budget), der Code-Teil mit der
   Library-Option. „Klein“ hält weiterhin nicht (GerDaLIRSmall +0.0003).
 - **Empfehlung Deutsch ab 50 000 Dokumenten:**
   `buildOrMatch(q, { stopwords: STOPWORDS_DE, prefixMin: 4 })` auf `unicode61`.
   Unter 50 000 Dokumenten unverändert (Trigram, vorläufig).
-- **FTS5-Präfix-Index** (`prefix='…'` beim Anlegen): ändert keine Rangfolge,
-  kostet das 1.21- bis 1.82-Fache der Indexgröße und senkt die Latenz von
-  `or-prefix-4` nicht konsistent. FTS5 nutzt ihn nur für Präfixe genau der
-  konfigurierten Länge; `prefix='4'` bedient 7.0 bis 8.7 % der Präfix-Wörter.
-  Keine Empfehlung.
+- **FTS5-Präfix-Index** (`prefix='…'` beim Anlegen): ändert keine Rangfolge und
+  senkt die p95 von `or-prefix-4` in jedem Vergleich etwas (um 1.20 bis 8.63 ms),
+  kostet aber das 1.21- bis 1.82-Fache der Indexgröße und das 1.4- bis 3.5-Fache
+  der Bauzeit. Laut SQLite-Dokumentation dient er Präfix-Abfragen der
+  konfigurierten Längen (nicht direkt gemessen); `prefix='4'` kann hier höchstens
+  7.0 bis 8.7 % der Präfix-Wörter bedienen. Keine Empfehlung: Der größte Gewinn
+  liegt unter den 10 ms, die E5 einer Erweiterung zugesteht, und E5 hält schon
+  ohne Index.

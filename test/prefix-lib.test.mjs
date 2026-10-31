@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { buildOrMatch, STOPWORDS_DE } from '../lib/or-search.mjs';
+import { buildOrMatch, hybridSearch, adaptiveSearch, STOPWORDS_DE } from '../lib/or-search.mjs';
 
 const de = { stopwords: STOPWORDS_DE };
 
@@ -35,5 +35,21 @@ test('prefixMin in SQLite: finds compounds that start with the word (also with a
     assert.deepEqual(find('Hund', de), [], prefix);
     assert.deepEqual(find('Ausweis', { ...de, prefixMin: 4 }), [], prefix);
     db.close();
+  }
+});
+
+test('prefixMin with hostile input: only the library adds *, and only after a closing quote', () => {
+  assert.equal(buildOrMatch('col:abcd* NEAR(x y) "evil', { prefixMin: 2 }), '("col"* OR "abcd"* OR "near"* OR "evil"*)');
+  assert.equal(buildOrMatch('ab"cd* OR ef^gh', { prefixMin: 2 }), '("ab"* OR "cd"* OR "ef"* OR "gh"*)');
+});
+
+test('prefixMin is a buildOrMatch option only: hybridSearch and adaptiveSearch ignore it (as in 0.3.0)', () => {
+  const run = (fn) => { const seen = []; fn((m, n) => { seen.push(m); return []; }); return seen; };
+  const q = 'Wo beantrage ich den Hundeausweis';
+  for (const o of [{}, { prefixMin: 4 }, { prefixMin: '4' }]) {
+    assert.deepEqual(run((s) => hybridSearch(s, q, (r) => r.content, { stopwords: STOPWORDS_DE, ...o })),
+      ['("beantrage" OR "hundeausweis")', '"beantrage" AND "hundeausweis"']);
+    assert.deepEqual(run((s) => adaptiveSearch(s, () => 0, q, (r) => r.content, { stopwords: STOPWORDS_DE, ...o })),
+      ['("beantrage" OR "hundeausweis")']);
   }
 });

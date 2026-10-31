@@ -25,8 +25,8 @@ every number from `docs/VALIDATION.md`):
   28 more words). From 50 000 documents on a `unicode61` index with prefix
   queries for words of at least four letters,
   `buildOrMatch(q, { stopwords: STOPWORDS_DE, prefixMin: 4 })`: +0.0174 to
-  +0.0393 nDCG@10 over plain OR on the four untuned test sets of that size
-  (T26, T31). Below 50 000 documents on a `trigram` index without prefix
+  +0.0393 nDCG@10 over plain OR on the four untuned test sets of the medium
+  and large size classes (T26, T31). Below 50 000 documents on a `trigram` index without prefix
   queries (provisional; not confirmed on GerDaLIRSmall, −0.0006).
 - **Scale:** latency and index size grow about linearly with the corpus. At
   1 000 000 passages the OR lane had a p95 of 118.78 ms (English) and
@@ -152,12 +152,13 @@ to 500 000, large above). **Small** (GermanDPR, GovService, mMARCO-de
 10 000): `or-trigram`, `hybrid-trigram` and `hybrid-expanded` meet it on all
 three; `or-trigram` needs no library code, and the other two are not better
 than it on every set or need german-fts5-stemmer as an extra package.
-**Medium** (mMARCO-de 100 000): only `hybrid-expanded` meets it, on one test
-set and with the extra package; `or-trigram` exceeds its latency budget
-(p95 21.30 ms against 12.24 ms). **Large** (mMARCO-de 1 000 000): every
-extension misses the +0.01 nDCG@10 threshold (`or-trigram` +0.0007,
-`hybrid` +0.0011, `hybrid-expanded` −0.0042, `hybrid-trigram` −0.0072,
-`or-stem` −0.0296). Plausibility (T16): `or` with the former 94-word list
+**Medium** (mMARCO-de 100 000): of the lanes in this table only
+`hybrid-expanded` meets it, on one test set and with the extra package;
+`or-trigram` exceeds its latency budget (p95 21.30 ms against 12.24 ms).
+**Large** (mMARCO-de 1 000 000): every lane in this table misses the +0.01
+nDCG@10 threshold (`or-trigram` +0.0007, `hybrid` +0.0011, `hybrid-expanded`
+−0.0042, `hybrid-trigram` −0.0072, `or-stem` −0.0296). Prefix queries, measured
+later, meet E5 in both classes (T26, T31; see below). Plausibility (T16): `or` with the former 94-word list
 (0.4797 and 0.6937) is close to the BM25 values of NanoMTEB-German (0.4647
 and 0.6132, 200-query subsets).
 
@@ -188,16 +189,17 @@ GerDaLIRSmall 6191.33 instead of 425.84 ms (T25).
 **Sub-word matching: prefix queries (T26, T31).** Every word of at least four
 letters as a prefix query (`"wort"*`) on the normal `unicode61` index; in the
 library `buildOrMatch(q, { stopwords: STOPWORDS_DE, prefixMin: 4 })`, which gave
-the same result as the T26 lane for every question on the two sets compared
+the same result as the T26 lane for every question on the three sets compared
 (T31). +0.0174 to +0.0409 nDCG@10 on 5 of 6 untuned German test sets (mMARCO-de
 1 000 000: 0.3668 against 0.3493), at 1.2 to 3 times the p95 of OR. With four
 lines of library code it meets E5 on every untuned test set of the medium and
 large classes, not in the small class (GerDaLIRSmall +0.0003). A prefix finds
 compounds that start with the query word („Hund“ → „Hundehalter“), not those
 that end with it („Ausweis“ → „Personalausweis“). An FTS5 prefix index
-(`prefix='…'` when the table is created) changes no ranking, costs 1.21 to 1.82
-times the index size and lowered the latency of the prefix lane only a little and
-not consistently between runs (T31); it is not needed.
+(`prefix='…'` when the table is created) changes no ranking and lowered the p95 of
+the prefix lane a little in every comparison (by 1.20 to 8.63 ms), at 1.21 to 1.82
+times the index size and 1.4 to 3.5 times the build time (T31); it is not needed
+for E5 and not recommended.
 
 **Adaptive stemming (measured, needs german-fts5-stemmer).** Expanding only
 the queries whose plain OR match hits at most 1 000 documents — stemmer
