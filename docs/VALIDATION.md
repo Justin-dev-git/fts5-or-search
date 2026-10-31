@@ -3346,8 +3346,8 @@ or-prefix-4 vs or: found only by or 13, only by or-prefix-4 50, by both 663
 - These are keyword-only lanes on a pure FTS5 index. The OpenClaw memory search is
   hybrid (0.7 × vector similarity + 0.3 × FTS5 keyword score, T28); there the switch of
   the keyword half from AND to OR raised hit@6 on 100 known-item requests only from
-  51 to 56, because the vector half already finds most items. The shares above do not
-  carry over to such a hybrid search.
+  51 to 56; the vector half already carries most of the ranking (T28). The shares
+  above do not carry over to such a hybrid search.
 - With OR the item was not in the top 100 for 5.3 % (GermanDPR) to 32.4 %
   (mMARCO-de 100 000) of the questions. mMARCO-de has about one judged passage per
   question, so "not found" also counts questions where an unjudged document might

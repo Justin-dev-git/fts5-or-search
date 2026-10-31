@@ -279,20 +279,21 @@ them because it returns fewer documents. Its cost is the missing result: AND's
 list holds no relevant document for 57.9 to 95.5 % of the questions, OR's for 5.3
 to 32.4 %; the follow-up searches this would cause were not measured. On the two
 untuned sets prefix queries put the item into the first six more often; when both
-lanes find it, they do not shorten the reading at k = 6. These numbers describe the
-retrieval side,
+lanes find it, they do not shorten the reading at k = 6.
+
+These numbers describe the retrieval side of a pure FTS5 search,
 not the context of an LLM agent: system prompt, tool descriptions, reformulated
 queries and answers were not measured. An end-to-end measurement with a real
 agent (OpenClaw with a local model, memory search AND against OR, tokens and
-search calls until the correct answer) is planned. In the OpenClaw case study the AND keyword half found nothing for 10 of
-14 real requests, but that memory search is hybrid (0.7 × vector + 0.3 × keyword
-score): switching its keyword half to OR raised hit@6 on 100 known-item requests
-only from 51 to 56 (T28), because the vector half already finds most items. The
-shares above do not carry over to such a hybrid search. Search latency:
-the OR lane had a p95 of 24.72 ms (German) and 118.78 ms (English) at 1 000 000
-passages and 1 027.75 ms on all 8 841 823 English passages. Model calls were not
-timed here, so how search latency compares with the rest of an agent's work is not
-known from these measurements.
+search calls until the correct answer) is planned. In the OpenClaw case study the
+AND keyword half found nothing for 10 of 14 real requests, but that memory search
+is hybrid (0.7 × vector + 0.3 × keyword score): switching its keyword half to OR
+raised hit@6 on 100 known-item requests only from 51 to 56 (T28); the vector half
+already carries most of the ranking. The shares above do not carry over to such a
+hybrid search. Search latency: the OR lane had a p95 of 24.72 ms (German) and
+118.78 ms (English) at 1 000 000 passages and 1 027.75 ms on all 8 841 823 English
+passages. Model calls were not timed here, so how search latency compares with the
+rest of an agent's work is not known from these measurements.
 
 ## Case study: OpenClaw memory and context
 
