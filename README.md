@@ -249,13 +249,14 @@ too).
 Full provenance — download commands, checksums, licenses, per-query
 compares — in [docs/VALIDATION.md](docs/VALIDATION.md).
 
-### What better ranking changes for an agent (T32)
+### What better retrieval changes for an agent (T32)
 
 An agent's memory search returns a fixed number of results per call — the
-OpenClaw memory search the top 6 — so a better ranking does not make one search
-result smaller. It changes whether the item the agent needs is among those six.
-Measured on the retrieval side, with the first document judged relevant standing
-in for that item (share of the questions; `or-prefix-4` only on the German sets):
+OpenClaw memory search the top 6 — so the context of one search is set by that
+number, whatever the search finds. What a better search changes is whether the
+item the agent needs is among those six. Measured on the retrieval side of a pure
+FTS5 search, with the first document judged relevant standing in for that item
+(share of the questions; `or-prefix-4` only on the German sets):
 
 | dataset | documents | `and` returns nothing | item in top 6: `and` | `or` | `or-prefix-4` |
 |---|---:|---:|---:|---:|---:|
@@ -267,25 +268,31 @@ in for that item (share of the questions; `or-prefix-4` only on the German sets)
 | mMARCO-de | 100 000 | 74.5 % | 18.7 % | 55.1 % | 58.3 % |
 
 OR puts the item into the first six results for 25.1 to 75.1 percentage points
-more questions than strict AND (paired 95 % intervals above zero), mostly because
-AND returns nothing at all for most natural-language questions; prefix queries add
-3.5 and 3.2 points on the two untuned German sets. In a simple agent model — read
-the results in order, call again for the next six until the item appears, each
-snippet a whole document — the questions found by both AND and OR need about the
-same number of calls, and AND even reads fewer characters because it returns fewer
-documents. Its cost is the missing result, for 57.9 to 95.5 % of the questions,
-and the follow-up searches that would cause (not measured). Prefix queries put the
-item into the first six more often; when both lanes find it, they do not shorten
-the reading. These numbers describe the retrieval side,
+more questions than strict AND (paired 95 % intervals above zero), almost entirely
+because AND returns nothing at all for 41.8 to 93.0 % of the questions (of the
+questions only OR has in the top 6, AND returned no result for 87.8 to 99.5 %);
+prefix queries add 3.5 and 3.2 points on the two untuned German sets. In a simple
+agent model — read the results in order, call again for the next six until the
+item appears, each snippet a whole document — the questions found by both AND and
+OR need about the same number of calls, and AND even reads fewer characters on
+them because it returns fewer documents. Its cost is the missing result: AND's
+list holds no relevant document for 57.9 to 95.5 % of the questions, OR's for 5.3
+to 32.4 %; the follow-up searches this would cause were not measured. On the two
+untuned sets prefix queries put the item into the first six more often; when both
+lanes find it, they do not shorten the reading at k = 6. These numbers describe the
+retrieval side,
 not the context of an LLM agent: system prompt, tool descriptions, reformulated
 queries and answers were not measured. An end-to-end measurement with a real
 agent (OpenClaw with a local model, memory search AND against OR, tokens and
-search calls until the correct answer) is planned. In the OpenClaw case study the
-AND keyword half found nothing for 10 of 14 real requests (T28). Search latency:
+search calls until the correct answer) is planned. In the OpenClaw case study the AND keyword half found nothing for 10 of
+14 real requests, but that memory search is hybrid (0.7 × vector + 0.3 × keyword
+score): switching its keyword half to OR raised hit@6 on 100 known-item requests
+only from 51 to 56 (T28), because the vector half already finds most items. The
+shares above do not carry over to such a hybrid search. Search latency:
 the OR lane had a p95 of 24.72 ms (German) and 118.78 ms (English) at 1 000 000
 passages and 1 027.75 ms on all 8 841 823 English passages. Model calls were not
-timed here, so whether latency matters for an agent outside very large corpora is
-an open question.
+timed here, so how search latency compares with the rest of an agent's work is not
+known from these measurements.
 
 ## Case study: OpenClaw memory and context
 
@@ -329,11 +336,12 @@ not an OpenClaw plugin; the patch measured here is local to that installation.
   1 000 000 and 1 027.75 ms at 8 841 823 passages.
 - German needs a complete stopword list: with it the p95 at 1 000 000
   passages fell from 266.96 to 24.72 ms, at no loss in quality.
-- For a search that returns a fixed number of results, as an agent's memory
-  search does, better ranking does not shrink the context per search; it puts
-  the needed item into the first results more often: with OR into the top 6 for
-  25.1 to 75.1 percentage points more questions than with strict AND (T32,
-  retrieval side only).
+- When a search returns a fixed number of results, as an agent's memory search
+  does, that number sets the context of one search; what changes is whether the
+  needed item is among the results. With OR it was in the top 6 for 25.1 to 75.1
+  percentage points more questions than with strict AND, almost entirely because
+  AND often returns nothing (T32; pure FTS5 search, retrieval side only; much
+  smaller in the hybrid OpenClaw memory search, T28).
 
 **What did not hold.**
 

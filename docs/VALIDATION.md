@@ -3323,20 +3323,31 @@ or-prefix-4 vs or: found only by or 13, only by or-prefix-4 50, by both 663
   75.1 points more questions on all six sets, every interval above zero; from
   4.3 to 40.6 % of the questions with AND to 55.1 to 85.4 % with OR. The main reason is
   that AND returned no result at all for 41.8 % (NFCorpus) to 93.0 % (SciFact) of the
-  questions. No question had its relevant document in AND's list but not in OR's.
+  questions: of the questions that only OR has in the top 6, AND had returned nothing
+  for 214 of 215 (SciFact), 72 of 82 (NFCorpus), 615 of 664 (GermanDPR), 262 of 268
+  (GovService), 1 529 of 1 556 (WebFAQ-de) and 356 of 364 (mMARCO-de), 87.8 to
+  99.5 %. No question had its relevant document in AND's list but not in OR's.
 - On the questions that both found (20 to 455 per set), the number of calls is about
   the same (Δ +0.00 to +0.04 at k = 6), and OR reads more characters (+865 to +7 893 at
-  k = 6), because AND then often returns fewer than six documents. In this model, AND
-  costs less context per search; its cost is that the item is missing for 57.9 to
-  95.5 % of the questions, and the follow-up searches an agent would make then were
-  not measured.
+  k = 6), because AND then often returns fewer than six documents. On these questions
+  AND costs less context per search in this model; its cost is that its list holds no
+  relevant document for 57.9 to 95.5 % of all questions (OR: 5.3 to 32.4 %), and the
+  follow-up searches an agent would make then were not measured.
 - Prefix queries against OR on the untuned sets: +3.5 [+2.5, +4.5] (WebFAQ-de 100 000)
   and +3.2 [+1.5, +5.0] (mMARCO-de 100 000) points more questions with the relevant
   document in the top 6; on GermanDPR (tuned) +5.2, on GovService (seen) +2.0
-  [+0.0, +3.9]. On the questions both found, calls and characters read do not differ
-  on the untuned sets (every interval contains zero for the calls; characters +99
-  [−9, +207] and +131 [−78, +344]): prefix queries put the item into the first
-  results more often, they do not shorten the reading when both find it.
+  [+0.0, +3.9]. On the questions both found, calls and characters read at k = 6 do
+  not differ on the untuned sets (every interval contains zero for the calls;
+  characters +99 [−9, +207] and +131 [−78, +344]); at k = 10 the prefix lane reads
+  more on WebFAQ-de (+162 [+50, +272] characters). On GermanDPR, tuned for it, it reads
+  less (k = 6: calls −0.14 [−0.21, −0.07], characters −999 [−1 637, −390]). On the
+  untuned sets prefix queries put the item into the first results more often; they do
+  not shorten the reading when both lanes find it.
+- These are keyword-only lanes on a pure FTS5 index. The OpenClaw memory search is
+  hybrid (0.7 × vector similarity + 0.3 × FTS5 keyword score, T28); there the switch of
+  the keyword half from AND to OR raised hit@6 on 100 known-item requests only from
+  51 to 56, because the vector half already finds most items. The shares above do not
+  carry over to such a hybrid search.
 - With OR the item was not in the top 100 for 5.3 % (GermanDPR) to 32.4 %
   (mMARCO-de 100 000) of the questions. mMARCO-de has about one judged passage per
   question, so "not found" also counts questions where an unjudged document might
@@ -3345,5 +3356,5 @@ or-prefix-4 vs or: found only by or 13, only by or-prefix-4 50, by both 663
   paging instead of reformulation; whole documents as snippets (the OpenClaw memory
   search returns chunks); no LLM, no tokens, no answer quality. An end-to-end
   measurement with a real agent (OpenClaw with a local model; memory search AND
-  against OR; tokens and search calls until the correct answer) is planned
-  separately and not part of this section.
+  against OR; tokens and search calls until the correct answer) is an open question;
+  it is planned separately and not part of this section.

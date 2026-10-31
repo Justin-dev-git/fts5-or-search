@@ -1,7 +1,8 @@
 // T32: beir-bench --context-cost and scripts/context-cost.mjs. Reference values on test/fixtures/beir-context, by hand:
 //   documents as indexed (title "", newline, text): a1 "\napple apple apple" 18 characters, a2 "\napple banana cherry"
 //   20, a3 "\npie 🥧" 6 (code points; the emoji is two UTF-16 units).
-//   q1 "apple" (rel a2): a1 has "apple" three times at the same length, so AND and OR rank a1, a2: first relevant at 2.
+//   q1 "apple" (rel a2; a1 judged 0 = not relevant): a1 has "apple" three times at the same length, so AND and OR
+//      rank a1, a2: first relevant at 2.
 //   q2 "banana pie" (rel a3): no document has both words, AND returns nothing; OR ranks the shorter a3 before a2.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

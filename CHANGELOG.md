@@ -21,9 +21,9 @@ and `adaptiveSearch` ignore `prefixMin`).
   mMARCO-de 100 000: with OR the first relevant document is in the top 6 for 25.1 to
   75.1 percentage points more questions than with strict AND, which returned nothing
   for 41.8 to 93.0 % of them; prefix queries add 3.5 and 3.2 points on the untuned
-  German sets. On questions both find, AND reads fewer characters because it returns
-  fewer documents. Retrieval side only, not the context of an LLM agent; no
-  recommendation change.
+  German sets. On questions both find, AND reads fewer characters in the agent model
+  (k = 6) because it returns fewer documents. Keyword-only lanes and retrieval side
+  only, not the context of an LLM agent or a hybrid search; no recommendation change.
 
 ### Added: prefix queries in the library; German recommendation from 50 000 documents (T31)
 - `buildOrMatch(q, { stopwords, prefixMin })`: every token of letters only with
