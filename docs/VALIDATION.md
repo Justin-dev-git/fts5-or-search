@@ -3094,7 +3094,7 @@ metric). Shares in the top 6 and top 10 over all questions; calls and characters
 over the questions that both lanes found in their list.
 
 Runs: English lanes `and,or` on SciFact and NFCorpus (`porter unicode61`, archives with
-the checksums above), German lanes `and,or,or-prefix-4` with `--stopwords lib` on
+the checksums of the SciFact and NFCorpus sections), German lanes `and,or,or-prefix-4` with `--stopwords lib` on
 GermanDPR, GovService, WebFAQ-de 100 000 and mMARCO-de 100 000; `--repeat 1`, one set
 after another on one core; latency is not evaluated here. nDCG@10 is the same as in the
 earlier runs of these sets (for example SciFact `or` 0.6878, WebFAQ-de 100 000
