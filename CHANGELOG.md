@@ -6,9 +6,24 @@ Behavior changes to public functions are marked **Behavior change**.
 ## 0.4.0 (2026-10-31)
 
 Since 0.3.0: the option `prefixMin` of `buildOrMatch` and, with it, a new German
-recommendation for corpora of 50 000 documents or more. Without `prefixMin` the
-output of `buildOrMatch` is byte-identical to 0.3.0; no other function changed
-(`hybridSearch` and `adaptiveSearch` ignore `prefixMin`).
+recommendation for corpora of 50 000 documents or more; a measurement of the context
+cost of the retrieval side (bench only). Without `prefixMin` the output of
+`buildOrMatch` is byte-identical to 0.3.0; no other function changed (`hybridSearch`
+and `adaptiveSearch` ignore `prefixMin`).
+
+### Added: context cost of the retrieval side (T32, bench only)
+- `scripts/beir-bench.mjs --context-cost <file>` writes, per question and lane, the
+  rank of the first relevant document and the length of every returned document;
+  `scripts/context-cost.mjs` reports the rank distribution, an agent model with k
+  results per call (paging, whole documents as snippets) and paired bootstrap
+  comparisons. `test/context-cost.test.mjs` with fixture `test/fixtures/beir-context`.
+- Measured on SciFact, NFCorpus, GermanDPR, GovService, WebFAQ-de 100 000 and
+  mMARCO-de 100 000: with OR the first relevant document is in the top 6 for 25.1 to
+  75.1 percentage points more questions than with strict AND, which returned nothing
+  for 41.8 to 93.0 % of them; prefix queries add 3.5 and 3.2 points on the untuned
+  German sets. On questions both find, AND reads fewer characters in the agent model
+  (k = 6) because it returns fewer documents. Keyword-only lanes and retrieval side
+  only, not the context of an LLM agent or a hybrid search; no recommendation change.
 
 ### Added: prefix queries in the library; German recommendation from 50 000 documents (T31)
 - `buildOrMatch(q, { stopwords, prefixMin })`: every token of letters only with

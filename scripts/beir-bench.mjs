@@ -39,6 +39,13 @@
 //   --prefix-min <n,...>  German only (T26): add the lanes or-prefix-<n>: the
 //           `or` match on unicode61 with every word of at least n letters as an
 //           FTS5 prefix query ("hund"* also finds "hundehalter", "hunde").
+//   --context-cost <file>  (T32) one JSON line per judged query:
+//           { qid, lanes: { <lane>: { first, chars } } } with `first` the 1-based
+//           rank of the first document with relevance > 0 in the lane's ranked
+//           list (at most 100 results; null if none) and `chars` the length in
+//           characters (code points) of every returned document as indexed
+//           (title, newline, text), in rank order. Evaluated by
+//           scripts/context-cost.mjs.
 //   --json  additionally prints one JSON line as the LAST output line:
 //           { dataset, docs, queries, lanes: { <lane>:
 //             { ndcg10, mrr10, recall100, p50ms, p95ms } } }
@@ -63,7 +70,7 @@ const BLEND_LAMBDAS = { blend: [0, 0.1, 0.2, 0.5], blendidf: [0.1, 0.2, 0.5] };
 function parseArgs(argv) {
   const out = {
     data: null, repeat: 3, json: false, perQuery: null, lanes: null, titleWeights: null,
-    lang: 'en', stemmer: null, dbDir: null, reportDb: false, reuseDb: false, stopwords: null, adaptiveTau: null, prefixMin: null, ftsPrefix: null,
+    lang: 'en', stemmer: null, dbDir: null, reportDb: false, reuseDb: false, stopwords: null, adaptiveTau: null, prefixMin: null, ftsPrefix: null, contextCost: null,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -71,6 +78,7 @@ function parseArgs(argv) {
     else if (a === '--repeat') out.repeat = Number(argv[++i]);
     else if (a === '--json') out.json = true;
     else if (a === '--per-query') out.perQuery = argv[++i];
+    else if (a === '--context-cost') out.contextCost = argv[++i];
     else if (a === '--lanes') out.lanes = argv[++i].split(',').filter(Boolean);
     else if (a === '--lang') out.lang = argv[++i];
     else if (a === '--stemmer') out.stemmer = argv[++i];
@@ -144,6 +152,12 @@ function readQrels(path) {
     qrels.get(qid)[docId] = Number(score);
   }
   return qrels;
+}
+
+/** T32: length of a returned document in characters (code points, not UTF-16 units). */
+function codePoints(s, lane) {
+  if (typeof s !== 'string') throw new Error(`beir-bench: --context-cost: lane ${lane} returns rows without content`);
+  return s.length - (s.match(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g)?.length ?? 0);
 }
 
 function percentile(sorted, p) {
@@ -409,7 +423,7 @@ async function lanesForDe(corpusPath, stem, dbOpts, stopwords = 'stemmer', adapt
 }
 
 async function run() {
-  const { data, repeat, json, perQuery, lanes: laneFilter, titleWeights, lang, stemmer, dbDir, reportDb, reuseDb, stopwords, adaptiveTau, prefixMin, ftsPrefix } = parseArgs(process.argv.slice(2));
+  const { data, repeat, json, perQuery, lanes: laneFilter, titleWeights, lang, stemmer, dbDir, reportDb, reuseDb, stopwords, adaptiveTau, prefixMin, ftsPrefix, contextCost } = parseArgs(process.argv.slice(2));
   const corpusPath = join(data, 'corpus.jsonl');
   const dbOpts = { dbDir, prefix: basename(resolve(data)), reuse: reuseDb };
   const queries = new Map(readJsonl(join(data, 'queries.jsonl')).map((q) => [String(q._id), q.text]));
@@ -456,6 +470,7 @@ async function run() {
   const runs = new Map(laneNames.map((l) => [l, new Map()]));
   const latency = new Map(laneNames.map((l) => [l, []])); // worst-run p50/p95
   const worst = new Map(laneNames.map((l) => [l, { p50: 0, p95: 0 }]));
+  const docChars = new Map(laneNames.map((l) => [l, new Map()])); // T32: characters of each returned document
 
   for (let rep = 0; rep < repeat; rep++) {
     for (const lane of laneNames) {
@@ -467,6 +482,7 @@ async function run() {
         const rows = fn(text);
         perQuery.push(performance.now() - t0);
         if (rep === 0) runs.get(lane).set(qid, rows.map((r) => String(r.id)));
+        if (rep === 0 && contextCost) docChars.get(lane).set(qid, rows.map((r) => codePoints(r.content, lane)));
       }
       const sorted = [...perQuery].sort((a, b) => a - b);
       worst.get(lane).p50 = Math.max(worst.get(lane).p50, percentile(sorted, 0.5));
@@ -537,6 +553,21 @@ async function run() {
       lines.push(JSON.stringify({ qid, terms, lanes: perLane }));
     }
     writeFileSync(perQuery, lines.join('\n') + '\n');
+  }
+  // T32: context-cost file for scripts/context-cost.mjs: one line per judged query.
+  if (contextCost) {
+    const lines = [];
+    for (const qid of qids) {
+      const qrel = qrels.get(qid);
+      const perLane = {};
+      for (const lane of laneNames) {
+        const ranked = runs.get(lane).get(qid) ?? [];
+        const i = ranked.findIndex((d) => (qrel[d] ?? 0) > 0);
+        perLane[lane] = { first: i < 0 ? null : i + 1, chars: docChars.get(lane).get(qid) ?? [] };
+      }
+      lines.push(JSON.stringify({ qid, lanes: perLane }));
+    }
+    writeFileSync(contextCost, lines.join('\n') + '\n');
   }
   if (json) console.log(JSON.stringify(out));
 }

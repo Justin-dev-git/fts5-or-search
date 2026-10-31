@@ -249,6 +249,52 @@ too).
 Full provenance — download commands, checksums, licenses, per-query
 compares — in [docs/VALIDATION.md](docs/VALIDATION.md).
 
+### What better retrieval changes for an agent (T32)
+
+An agent's memory search returns a fixed number of results per call — the
+OpenClaw memory search the top 6 — so the context of one search is set by that
+number, whatever the search finds. What a better search changes is whether the
+item the agent needs is among those six. Measured on the retrieval side of a pure
+FTS5 search, with the first document judged relevant standing in for that item
+(share of the questions; `or-prefix-4` only on the German sets):
+
+| dataset | documents | `and` returns nothing | item in top 6: `and` | `or` | `or-prefix-4` |
+|---|---:|---:|---:|---:|---:|
+| SciFact | 5 183 | 93.0 % | 6.7 % | 78.3 % | – |
+| NFCorpus | 3 633 | 41.8 % | 40.6 % | 65.6 % | – |
+| GermanDPR | 2 876 | 87.0 % | 4.3 % | 69.0 % | 74.1 % (tuned) |
+| GovService | 105 | 87.7 % | 10.4 % | 85.4 % | 87.4 % (seen) |
+| WebFAQ-de | 100 000 | 81.0 % | 14.9 % | 66.6 % | 70.1 % |
+| mMARCO-de | 100 000 | 74.5 % | 18.7 % | 55.1 % | 58.3 % |
+
+OR puts the item into the first six results for 25.1 to 75.1 percentage points
+more questions than strict AND (paired 95 % intervals above zero), almost entirely
+because AND returns nothing at all for 41.8 to 93.0 % of the questions (of the
+questions only OR has in the top 6, AND returned no result for 87.8 to 99.5 %);
+prefix queries add 3.5 and 3.2 points on the two untuned German sets. In a simple
+agent model — read the results in order, call again for the next six until the
+item appears, each snippet a whole document — the questions found by both AND and
+OR need about the same number of calls, and AND even reads fewer characters on
+them because it returns fewer documents. Its cost is the missing result: AND's
+list holds no relevant document for 57.9 to 95.5 % of the questions, OR's for 5.3
+to 32.4 %; the follow-up searches this would cause were not measured. On the two
+untuned sets prefix queries put the item into the first six more often; when both
+lanes find it, they do not shorten the reading at k = 6.
+
+These numbers describe the retrieval side of a pure FTS5 search,
+not the context of an LLM agent: system prompt, tool descriptions, reformulated
+queries and answers were not measured. An end-to-end measurement with a real
+agent (OpenClaw with a local model, memory search AND against OR, tokens and
+search calls until the correct answer) is planned. In the OpenClaw case study the
+AND keyword half found nothing for 10 of 14 real requests, but that memory search
+is hybrid (0.7 × vector + 0.3 × keyword score): switching its keyword half to OR
+raised hit@6 on 100 known-item requests only from 51 to 56 (T28); the vector half
+already carries most of the ranking. The shares above do not carry over to such a
+hybrid search. Search latency: the OR lane had a p95 of 24.72 ms (German) and
+118.78 ms (English) at 1 000 000 passages and 1 027.75 ms on all 8 841 823 English
+passages. Model calls were not timed here, so how search latency compares with the
+rest of an agent's work is not known from these measurements.
+
 ## Case study: OpenClaw memory and context
 
 The numbers come from one private OpenClaw installation (only aggregate
@@ -291,6 +337,12 @@ not an OpenClaw plugin; the patch measured here is local to that installation.
   1 000 000 and 1 027.75 ms at 8 841 823 passages.
 - German needs a complete stopword list: with it the p95 at 1 000 000
   passages fell from 266.96 to 24.72 ms, at no loss in quality.
+- When a search returns a fixed number of results, as an agent's memory search
+  does, that number sets the context of one search; what changes is whether the
+  needed item is among the results. With OR it was in the top 6 for 25.1 to 75.1
+  percentage points more questions than with strict AND, almost entirely because
+  AND often returns nothing (T32; pure FTS5 search, retrieval side only; much
+  smaller in the hybrid OpenClaw memory search, T28).
 
 **What did not hold.**
 
@@ -346,6 +398,8 @@ did not help in the OpenClaw case study.
 - Purely lexical: no synonyms beyond what stemming or sub-words cover.
 - Datasets are not shipped (licenses: see `docs/VALIDATION.md`).
 - Latencies come from a single machine.
+- The effect on the context and the answers of an LLM agent was not measured;
+  T32 covers only the retrieval side, an end-to-end measurement is planned.
 
 ## How to read the results
 
@@ -509,6 +563,15 @@ variants of the stemmer lanes; without it the bench uses the stemmer's
 94-word list of T16–T19. mMARCO download, conversion and the scale runner
 (`scripts/scale-run.sh`) are in `tasks/T19-scale.md` and
 `tasks/T21-stopwords-de.md`.
+
+Context cost of the retrieval side (T32): rank of the first relevant document
+and characters read, per question and lane, then the summary and paired
+comparisons:
+
+```bash
+node scripts/beir-bench.mjs --data scifact --lanes and,or --repeat 1 --context-cost scifact.ctx.jsonl
+node scripts/context-cost.mjs scifact.ctx.jsonl --pairs and:or
+```
 
 ```bash
 npm test      # tokenizing, quoting/injection, rerank semantics
