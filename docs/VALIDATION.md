@@ -3053,3 +3053,288 @@ index de-1000000-trigram: build 64.1 s, size 1942.40 MB
   index. The prefix index is not recommended. A plausible reason, not measured: for
   `ORDER BY rank` FTS5 scores every document that matches a query word, and a prefix
   index does not reduce the number of matching documents.
+
+
+## T32 – Context cost of the retrieval side
+
+Question: an agent's search tool returns a fixed number of results per call (the
+OpenClaw memory search the top 6, T28). A better ranking therefore does not make one
+search result smaller; it changes how often the item the agent needs is among those
+results, and how many further searches it would need. How large is that effect for
+strict AND, quoted OR and the prefix lane? Only the retrieval side is measured, not
+the context of an LLM agent.
+
+Code: measurement commit `5300e9e`; evaluated with `scripts/context-cost.mjs` at
+`58bd4d1` (adds only the shares of empty lists and of not found questions to the
+text table). `beir-bench.mjs --context-cost <file>` writes, per judged question and
+lane, the rank r of the first document judged relevant (relevance > 0) in the lane's
+ranked list of at most 100 results (null if there is none) and the length in
+characters (code points) of every returned document as indexed (title, newline,
+text). Rankings and all other output are unchanged. Tests: `test/context-cost.test.mjs`
+with fixture `test/fixtures/beir-context` (values computed by hand).
+
+**Without assumptions:** the share of questions with r = 1, r ≤ 6, r ≤ 10 and r ≤ 100
+(top 100), the questions without a relevant document in the list (not found), the
+questions for which the lane returned no result at all (empty list), the median r of
+the found questions and the characters of the documents on ranks 1 to r.
+
+**Agent model (assumptions):** (1) the first document judged relevant stands for the
+item the agent needs; (2) every call returns k results, k = 6 as in the OpenClaw memory
+search, and k = 10; (3) the agent reads them in rank order and, if the item is not
+among them, calls again for the next k (paging; a real agent may reformulate instead,
+which is not modelled); (4) a snippet is the whole document. Then calls = ceil(r / k),
+snippets = min(calls × k, results returned) and characters = their total length.
+Questions whose item is not in the list are counted as not found and never averaged
+in. Tokens were not measured; the common rule of thumb of about four characters per
+token was not checked here.
+
+**Pairs `a:b`:** Δ = mean of the per-question differences (b − a); 95 % interval from a
+paired bootstrap (4 000 resamples, mulberry32, seed 32 reset for every pair and
+metric). Shares in the top 6 and top 10 over all questions; calls and characters only
+over the questions that both lanes found in their list.
+
+Runs: English lanes `and,or` on SciFact and NFCorpus (`porter unicode61`, archives with
+the checksums above), German lanes `and,or,or-prefix-4` with `--stopwords lib` on
+GermanDPR, GovService, WebFAQ-de 100 000 and mMARCO-de 100 000; `--repeat 1`, one set
+after another on one core; latency is not evaluated here. nDCG@10 is the same as in the
+earlier runs of these sets (for example SciFact `or` 0.6878, WebFAQ-de 100 000
+`or-prefix-4` 0.6395). `and` and `or` have no tuned parameters. For `or-prefix-4`,
+GermanDPR was used to choose n = 4 (tuned) and GovService was looked at before the
+tuning (seen, T26); untuned for it are WebFAQ-de 100 000 and mMARCO-de 100 000.
+
+Rank of the first relevant document (shares of all questions):
+
+| set | lane | empty list | rank 1 | top 6 | top 10 | top 100 | not found | median rank | characters to the first relevant, median / mean |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| SciFact | `and` | 279 (93.0 %) | 6.7 % | 6.7 % | 6.7 % | 6.7 % | 280 (93.3 %) | 1 | 1 509 / 1 752 |
+| SciFact | `or` | 0 (0.0 %) | 55.3 % | 78.3 % | 84.3 % | 92.3 % | 23 (7.7 %) | 1 | 2 268 / 7 671 |
+| NFCorpus | `and` | 135 (41.8 %) | 30.3 % | 40.6 % | 41.2 % | 42.1 % | 187 (57.9 %) | 1 | 1 763 / 2 812 |
+| NFCorpus | `or` | 15 (4.6 %) | 43.7 % | 65.6 % | 68.4 % | 79.3 % | 67 (20.7 %) | 1 | 2 099 / 10 934 |
+| GermanDPR | `and` | 892 (87.0 %) | 2.6 % | 4.3 % | 4.5 % | 4.5 % | 979 (95.5 %) | 1 | 2 082 / 3 154 |
+| GermanDPR | `or` | 3 (0.3 %) | 22.0 % | 69.0 % | 81.9 % | 94.7 % | 54 (5.3 %) | 4 | 5 257 / 9 621 |
+| GermanDPR (tuned) | `or-prefix-4` | 3 (0.3 %) | 25.5 % | 74.1 % | 85.3 % | 96.2 % | 39 (3.8 %) | 4 | 4 770 / 8 311 |
+| GovService | `and` | 313 (87.7 %) | 9.5 % | 10.4 % | 10.4 % | 10.4 % | 320 (89.6 %) | 1 | 1 244 / 1 345 |
+| GovService | `or` | 2 (0.6 %) | 56.3 % | 85.4 % | 88.0 % | 90.2 % | 35 (9.8 %) | 1 | 1 394 / 2 687 |
+| GovService (seen) | `or-prefix-4` | 2 (0.6 %) | 58.5 % | 87.4 % | 90.5 % | 93.3 % | 24 (6.7 %) | 1 | 1 394 / 2 912 |
+| WebFAQ-de 100 000 | `and` | 2 431 (81.0 %) | 14.0 % | 14.9 % | 15.0 % | 15.2 % | 2 545 (84.8 %) | 1 | 298 / 497 |
+| WebFAQ-de 100 000 | `or` | 16 (0.5 %) | 51.7 % | 66.6 % | 69.8 % | 79.3 % | 621 (20.7 %) | 1 | 386 / 1 732 |
+| WebFAQ-de 100 000 | `or-prefix-4` | 14 (0.5 %) | 54.9 % | 70.1 % | 73.1 % | 82.8 % | 517 (17.2 %) | 1 | 384 / 1 781 |
+| mMARCO-de 100 000 | `and` | 745 (74.5 %) | 17.3 % | 18.7 % | 18.8 % | 19.3 % | 807 (80.7 %) | 1 | 358 / 880 |
+| mMARCO-de 100 000 | `or` | 75 (7.5 %) | 42.8 % | 55.1 % | 57.6 % | 67.6 % | 324 (32.4 %) | 1 | 446 / 2 358 |
+| mMARCO-de 100 000 | `or-prefix-4` | 67 (6.7 %) | 46.8 % | 58.3 % | 61.6 % | 71.3 % | 287 (28.7 %) | 1 | 434 / 2 299 |
+
+Agent model, means over the found questions of each lane (the lanes find different
+questions, so compare lanes with the paired table below):
+
+| set | lane | k = 6: calls / snippets / characters | k = 10: calls / snippets / characters |
+|---|---|---:|---:|
+| SciFact | `and` | 1.00 / 1.10 / 1 919 | 1.00 / 1.10 / 1 919 |
+| SciFact | `or` | 1.53 / 9.18 / 14 265 | 1.27 / 12.71 / 19 888 |
+| NFCorpus | `and` | 1.06 / 4.62 / 7 441 | 1.03 / 6.18 / 9 974 |
+| NFCorpus | `or` | 1.83 / 10.51 / 16 745 | 1.45 / 13.37 / 21 325 |
+| GermanDPR | `and` | 1.04 / 2.61 / 4 052 | 1.00 / 2.63 / 4 092 |
+| GermanDPR | `or` | 1.67 / 9.98 / 13 880 | 1.30 / 12.91 / 17 898 |
+| GermanDPR (tuned) | `or-prefix-4` | 1.52 / 9.08 / 12 754 | 1.23 / 12.18 / 17 024 |
+| GovService | `and` | 1.00 / 1.59 / 2 015 | 1.00 / 1.59 / 2 015 |
+| GovService | `or` | 1.06 / 5.83 / 7 332 | 1.02 / 8.60 / 10 825 |
+| GovService (seen) | `or-prefix-4` | 1.10 / 6.22 / 7 818 | 1.04 / 9.18 / 11 574 |
+| WebFAQ-de 100 000 | `and` | 1.05 / 1.81 / 712 | 1.03 / 1.98 / 833 |
+| WebFAQ-de 100 000 | `or` | 1.67 / 9.88 / 2 934 | 1.36 / 13.30 / 3 918 |
+| WebFAQ-de 100 000 | `or-prefix-4` | 1.64 / 9.73 / 3 052 | 1.34 / 13.20 / 4 095 |
+| mMARCO-de 100 000 | `and` | 1.20 / 3.13 / 1 150 | 1.12 / 3.55 / 1 318 |
+| mMARCO-de 100 000 | `or` | 1.82 / 10.47 / 3 643 | 1.45 / 13.66 / 4 707 |
+| mMARCO-de 100 000 | `or-prefix-4` | 1.78 / 10.27 / 3 601 | 1.42 / 13.37 / 4 650 |
+
+Paired comparisons:
+
+| set | `b` vs `a` | found only by `a` / only by `b` / both | Δ top 6, points | Δ top 10, points | both found: Δ calls, k = 6 | both found: Δ characters read, k = 6 | both found: Δ characters to the first relevant |
+|---|---|---:|---:|---:|---:|---:|---:|
+| SciFact | `or` vs `and` | 0 / 257 / 20 | +71.7 [+66.3, +76.7] | +77.7 [+72.7, +82.0] | +0.00 [+0.00, +0.00] | +7 893 [+7 101, +8 802] | −21 [−64, +0] |
+| NFCorpus | `or` vs `and` | 0 / 120 / 136 | +25.1 [+20.1, +29.7] | +27.2 [+22.3, +31.9] | +0.01 [+0.00, +0.02] | +1 351 [+871, +1 885] | +25 [+0, +59] |
+| GermanDPR | `or` vs `and` | 0 / 925 / 46 | +64.7 [+61.8, +67.5] | +77.4 [+74.6, +79.9] | +0.02 [+0.00, +0.07] | +4 685 [+3 645, +5 721] | +518 [+144, +963] |
+| GermanDPR (tuned) | `or-prefix-4` vs `or` | 3 / 18 / 968 | +5.2 [+3.2, +7.0] | +3.4 [+1.8, +5.2] | −0.14 [−0.21, −0.07] | −999 [−1 637, −390] | −1 193 [−1 836, −603] |
+| GovService | `or` vs `and` | 0 / 285 / 37 | +75.1 [+70.6, +79.6] | +77.6 [+73.1, +81.8] | +0.00 [+0.00, +0.00] | +3 527 [+2 683, +4 353] | +29 [+0, +86] |
+| GovService (seen) | `or-prefix-4` vs `or` | 0 / 11 / 322 | +2.0 [+0.0, +3.9] | +2.5 [+0.8, +4.5] | +0.01 [−0.02, +0.03] | +231 [+41, +437] | −80 [−244, +96] |
+| WebFAQ-de 100 000 | `or` vs `and` | 0 / 1 924 / 455 | +51.7 [+49.8, +53.5] | +54.8 [+53.0, +56.7] | +0.04 [+0.01, +0.11] | +1 081 [+972, +1 204] | +77 [+15, +182] |
+| WebFAQ-de 100 000 | `or-prefix-4` vs `or` | 29 / 133 / 2 350 | +3.5 [+2.5, +4.5] | +3.3 [+2.4, +4.2] | −0.02 [−0.08, +0.03] | +99 [−9, +207] | +15 [−93, +120] |
+| mMARCO-de 100 000 | `or` vs `and` | 0 / 483 / 193 | +36.4 [+33.4, +39.4] | +38.8 [+35.7, +41.9] | +0.00 [+0.00, +0.00] | +865 [+743, +982] | +7 [+1, +14] |
+| mMARCO-de 100 000 | `or-prefix-4` vs `or` | 13 / 50 / 663 | +3.2 [+1.5, +5.0] | +4.0 [+2.4, +5.6] | +0.05 [−0.05, +0.15] | +131 [−78, +344] | +114 [−99, +328] |
+
+Raw outputs:
+
+SciFact (5 183 documents, 300 questions):
+
+```
+dataset=scifact docs=5183 queries=300 repeat=1
+lane  ndcg@10  mrr@10  recall@100  p@10    p50ms  p95ms
+and   0.0616   0.0667  0.0603      0.0067  0.09   0.21
+or    0.6878   0.6497  0.9193      0.0910  2.11   3.66
+
+questions=300 (first relevant document within the returned list of at most 100)
+lane | empty | rank 1 | top 6 | top 10 | top 100 | not found | median rank | chars to first (median / mean) | k=6: calls / snippets / chars | k=10: calls / snippets / chars
+and | 279 (93.0 %) | 6.7 % | 6.7 % | 6.7 % | 6.7 % | 280 (93.3 %) | 1 | 1 509 / 1 752 | 1.00 / 1.10 / 1 919 | 1.00 / 1.10 / 1 919
+or | 0 (0.0 %) | 55.3 % | 78.3 % | 84.3 % | 92.3 % | 23 (7.7 %) | 1 | 2 268 / 7 671 | 1.53 / 9.18 / 14 265 | 1.27 / 12.71 / 19 888
+
+or vs and: found only by and 0, only by or 257, by both 20
+  k=6: Δ in top 6 +71.7 [+66.3, +76.7] points; both found: Δ calls +0.00 [+0.00, +0.00], Δ chars read +7 893 [+7 101, +8 802]
+  k=10: Δ in top 10 +77.7 [+72.7, +82.0] points; both found: Δ calls +0.00 [+0.00, +0.00], Δ chars read +13 942 [+12 707, +15 267]
+  both found: Δ chars to first −21 [−64, +0]
+```
+
+NFCorpus (3 633 documents, 323 questions):
+
+```
+dataset=nfcorpus docs=3633 queries=323 repeat=1
+lane  ndcg@10  mrr@10  recall@100  p@10    p50ms  p95ms
+and   0.2097   0.3484  0.1043      0.1415  0.06   0.38
+or    0.3209   0.5247  0.2458      0.2337  0.59   1.66
+
+questions=323 (first relevant document within the returned list of at most 100)
+lane | empty | rank 1 | top 6 | top 10 | top 100 | not found | median rank | chars to first (median / mean) | k=6: calls / snippets / chars | k=10: calls / snippets / chars
+and | 135 (41.8 %) | 30.3 % | 40.6 % | 41.2 % | 42.1 % | 187 (57.9 %) | 1 | 1 763 / 2 812 | 1.06 / 4.62 / 7 441 | 1.03 / 6.18 / 9 974
+or | 15 (4.6 %) | 43.7 % | 65.6 % | 68.4 % | 79.3 % | 67 (20.7 %) | 1 | 2 099 / 10 934 | 1.83 / 10.51 / 16 745 | 1.45 / 13.37 / 21 325
+
+or vs and: found only by and 0, only by or 120, by both 136
+  k=6: Δ in top 6 +25.1 [+20.1, +29.7] points; both found: Δ calls +0.01 [+0.00, +0.02], Δ chars read +1 351 [+871, +1 885]
+  k=10: Δ in top 10 +27.2 [+22.3, +31.9] points; both found: Δ calls +0.00 [+0.00, +0.00], Δ chars read +3 274 [+2 420, +4 209]
+  both found: Δ chars to first +25 [+0, +59]
+```
+
+GermanDPR (2 876 documents, 1 025 questions):
+
+```
+dataset=germandpr docs=2876 queries=1025 repeat=1
+lane         ndcg@10  mrr@10  recall@100  p@10    p50ms  p95ms
+and          0.0356   0.0326  0.0449      0.0045  0.04   0.10
+or           0.4807   0.3765  0.9473      0.0819  0.79   1.12
+or-prefix-4  0.5233   0.4207  0.9620      0.0853  1.70   2.67
+db size MB: unicode61=7.69 trigram=19.93
+
+questions=1025 (first relevant document within the returned list of at most 100)
+lane | empty | rank 1 | top 6 | top 10 | top 100 | not found | median rank | chars to first (median / mean) | k=6: calls / snippets / chars | k=10: calls / snippets / chars
+and | 892 (87.0 %) | 2.6 % | 4.3 % | 4.5 % | 4.5 % | 979 (95.5 %) | 1 | 2 082 / 3 154 | 1.04 / 2.61 / 4 052 | 1.00 / 2.63 / 4 092
+or | 3 (0.3 %) | 22.0 % | 69.0 % | 81.9 % | 94.7 % | 54 (5.3 %) | 4 | 5 257 / 9 621 | 1.67 / 9.98 / 13 880 | 1.30 / 12.91 / 17 898
+or-prefix-4 | 3 (0.3 %) | 25.5 % | 74.1 % | 85.3 % | 96.2 % | 39 (3.8 %) | 4 | 4 770 / 8 311 | 1.52 / 9.08 / 12 754 | 1.23 / 12.18 / 17 024
+
+or vs and: found only by and 0, only by or 925, by both 46
+  k=6: Δ in top 6 +64.7 [+61.8, +67.5] points; both found: Δ calls +0.02 [+0.00, +0.07], Δ chars read +4 685 [+3 645, +5 721]
+  k=10: Δ in top 10 +77.4 [+74.6, +79.9] points; both found: Δ calls +0.00 [+0.00, +0.00], Δ chars read +8 579 [+7 121, +10 025]
+  both found: Δ chars to first +518 [+144, +963]
+
+or-prefix-4 vs or: found only by or 3, only by or-prefix-4 18, by both 968
+  k=6: Δ in top 6 +5.2 [+3.2, +7.0] points; both found: Δ calls −0.14 [−0.21, −0.07], Δ chars read −999 [−1 637, −390]
+  k=10: Δ in top 10 +3.4 [+1.8, +5.2] points; both found: Δ calls −0.06 [−0.11, −0.02], Δ chars read −701 [−1 376, −84]
+  both found: Δ chars to first −1 193 [−1 836, −603]
+```
+
+GovService (105 documents, 357 questions):
+
+```
+dataset=govservice docs=105 queries=357 repeat=1
+lane         ndcg@10  mrr@10  recall@100  p@10    p50ms  p95ms
+and          0.1005   0.0994  0.1036      0.0104  0.02   0.04
+or           0.7280   0.6785  0.9020      0.0880  0.09   0.29
+or-prefix-4  0.7516   0.7017  0.9328      0.0905  0.33   0.67
+db size MB: unicode61=0.26 trigram=0.64
+
+questions=357 (first relevant document within the returned list of at most 100)
+lane | empty | rank 1 | top 6 | top 10 | top 100 | not found | median rank | chars to first (median / mean) | k=6: calls / snippets / chars | k=10: calls / snippets / chars
+and | 313 (87.7 %) | 9.5 % | 10.4 % | 10.4 % | 10.4 % | 320 (89.6 %) | 1 | 1 244 / 1 345 | 1.00 / 1.59 / 2 015 | 1.00 / 1.59 / 2 015
+or | 2 (0.6 %) | 56.3 % | 85.4 % | 88.0 % | 90.2 % | 35 (9.8 %) | 1 | 1 394 / 2 687 | 1.06 / 5.83 / 7 332 | 1.02 / 8.60 / 10 825
+or-prefix-4 | 2 (0.6 %) | 58.5 % | 87.4 % | 90.5 % | 93.3 % | 24 (6.7 %) | 1 | 1 394 / 2 912 | 1.10 / 6.22 / 7 818 | 1.04 / 9.18 / 11 574
+
+or vs and: found only by and 0, only by or 285, by both 37
+  k=6: Δ in top 6 +75.1 [+70.6, +79.6] points; both found: Δ calls +0.00 [+0.00, +0.00], Δ chars read +3 527 [+2 683, +4 353]
+  k=10: Δ in top 10 +77.6 [+73.1, +81.8] points; both found: Δ calls +0.00 [+0.00, +0.00], Δ chars read +5 941 [+4 396, +7 454]
+  both found: Δ chars to first +29 [+0, +86]
+
+or-prefix-4 vs or: found only by or 0, only by or-prefix-4 11, by both 322
+  k=6: Δ in top 6 +2.0 [+0.0, +3.9] points; both found: Δ calls +0.01 [−0.02, +0.03], Δ chars read +231 [+41, +437]
+  k=10: Δ in top 10 +2.5 [+0.8, +4.5] points; both found: Δ calls +0.00 [−0.01, +0.01], Δ chars read +535 [+329, +762]
+  both found: Δ chars to first −80 [−244, +96]
+```
+
+WebFAQ-de 100 000 (100 000 documents, 3 000 questions):
+
+```
+dataset=deu-100000 docs=100000 queries=3000 repeat=1
+lane         ndcg@10  mrr@10  recall@100  p@10    p50ms  p95ms
+and          0.1453   0.1437  0.1517      0.0150  0.10   0.29
+or           0.6065   0.5774  0.7930      0.0698  1.43   5.89
+or-prefix-4  0.6395   0.6103  0.8277      0.0731  2.43   8.44
+db size MB: unicode61=68.48 trigram=189.38
+
+questions=3000 (first relevant document within the returned list of at most 100)
+lane | empty | rank 1 | top 6 | top 10 | top 100 | not found | median rank | chars to first (median / mean) | k=6: calls / snippets / chars | k=10: calls / snippets / chars
+and | 2431 (81.0 %) | 14.0 % | 14.9 % | 15.0 % | 15.2 % | 2545 (84.8 %) | 1 | 298 / 497 | 1.05 / 1.81 / 712 | 1.03 / 1.98 / 833
+or | 16 (0.5 %) | 51.7 % | 66.6 % | 69.8 % | 79.3 % | 621 (20.7 %) | 1 | 386 / 1 732 | 1.67 / 9.88 / 2 934 | 1.36 / 13.30 / 3 918
+or-prefix-4 | 14 (0.5 %) | 54.9 % | 70.1 % | 73.1 % | 82.8 % | 517 (17.2 %) | 1 | 384 / 1 781 | 1.64 / 9.73 / 3 052 | 1.34 / 13.20 / 4 095
+
+or vs and: found only by and 0, only by or 1924, by both 455
+  k=6: Δ in top 6 +51.7 [+49.8, +53.5] points; both found: Δ calls +0.04 [+0.01, +0.11], Δ chars read +1 081 [+972, +1 204]
+  k=10: Δ in top 10 +54.8 [+53.0, +56.7] points; both found: Δ calls +0.02 [+0.00, +0.06], Δ chars read +1 889 [+1 756, +2 020]
+  both found: Δ chars to first +77 [+15, +182]
+
+or-prefix-4 vs or: found only by or 29, only by or-prefix-4 133, by both 2350
+  k=6: Δ in top 6 +3.5 [+2.5, +4.5] points; both found: Δ calls −0.02 [−0.08, +0.03], Δ chars read +99 [−9, +207]
+  k=10: Δ in top 10 +3.3 [+2.4, +4.2] points; both found: Δ calls −0.01 [−0.04, +0.03], Δ chars read +162 [+50, +272]
+  both found: Δ chars to first +15 [−93, +120]
+```
+
+mMARCO-de 100 000 (100 000 documents, 1 000 questions):
+
+```
+dataset=de-100000 docs=100000 queries=1000 repeat=1
+lane         ndcg@10  mrr@10  recall@100  p@10    p50ms  p95ms
+and          0.1783   0.1793  0.1888      0.0190  0.05   0.18
+or           0.4948   0.4748  0.6730      0.0600  0.67   2.15
+or-prefix-4  0.5341   0.5131  0.7105      0.0645  1.37   3.96
+db size MB: unicode61=67.47 trigram=188.87
+
+questions=1000 (first relevant document within the returned list of at most 100)
+lane | empty | rank 1 | top 6 | top 10 | top 100 | not found | median rank | chars to first (median / mean) | k=6: calls / snippets / chars | k=10: calls / snippets / chars
+and | 745 (74.5 %) | 17.3 % | 18.7 % | 18.8 % | 19.3 % | 807 (80.7 %) | 1 | 358 / 880 | 1.20 / 3.13 / 1 150 | 1.12 / 3.55 / 1 318
+or | 75 (7.5 %) | 42.8 % | 55.1 % | 57.6 % | 67.6 % | 324 (32.4 %) | 1 | 446 / 2 358 | 1.82 / 10.47 / 3 643 | 1.45 / 13.66 / 4 707
+or-prefix-4 | 67 (6.7 %) | 46.8 % | 58.3 % | 61.6 % | 71.3 % | 287 (28.7 %) | 1 | 434 / 2 299 | 1.78 / 10.27 / 3 601 | 1.42 / 13.37 / 4 650
+
+or vs and: found only by and 0, only by or 483, by both 193
+  k=6: Δ in top 6 +36.4 [+33.4, +39.4] points; both found: Δ calls +0.00 [+0.00, +0.00], Δ chars read +865 [+743, +982]
+  k=10: Δ in top 10 +38.8 [+35.7, +41.9] points; both found: Δ calls +0.00 [+0.00, +0.00], Δ chars read +1 626 [+1 407, +1 838]
+  both found: Δ chars to first +7 [+1, +14]
+
+or-prefix-4 vs or: found only by or 13, only by or-prefix-4 50, by both 663
+  k=6: Δ in top 6 +3.2 [+1.5, +5.0] points; both found: Δ calls +0.05 [−0.05, +0.15], Δ chars read +131 [−78, +344]
+  k=10: Δ in top 10 +4.0 [+2.4, +5.6] points; both found: Δ calls +0.02 [−0.04, +0.08], Δ chars read +129 [−84, +344]
+  both found: Δ chars to first +114 [−99, +328]
+```
+
+### Facts
+
+- OR against strict AND: the first relevant document is in the top 6 for 25.1 to
+  75.1 points more questions on all six sets, every interval above zero; from
+  4.3 to 40.6 % of the questions with AND to 55.1 to 85.4 % with OR. The main reason is
+  that AND returned no result at all for 41.8 % (NFCorpus) to 93.0 % (SciFact) of the
+  questions. No question had its relevant document in AND's list but not in OR's.
+- On the questions that both found (20 to 455 per set), the number of calls is about
+  the same (Δ +0.00 to +0.04 at k = 6), and OR reads more characters (+865 to +7 893 at
+  k = 6), because AND then often returns fewer than six documents. In this model, AND
+  costs less context per search; its cost is that the item is missing for 57.9 to
+  95.5 % of the questions, and the follow-up searches an agent would make then were
+  not measured.
+- Prefix queries against OR on the untuned sets: +3.5 [+2.5, +4.5] (WebFAQ-de 100 000)
+  and +3.2 [+1.5, +5.0] (mMARCO-de 100 000) points more questions with the relevant
+  document in the top 6; on GermanDPR (tuned) +5.2, on GovService (seen) +2.0
+  [+0.0, +3.9]. On the questions both found, calls and characters read do not differ
+  on the untuned sets (every interval contains zero for the calls; characters +99
+  [−9, +207] and +131 [−78, +344]): prefix queries put the item into the first
+  results more often, they do not shorten the reading when both find it.
+- With OR the item was not in the top 100 for 5.3 % (GermanDPR) to 32.4 %
+  (mMARCO-de 100 000) of the questions. mMARCO-de has about one judged passage per
+  question, so "not found" also counts questions where an unjudged document might
+  have served.
+- Limits: retrieval side only; the first judged-relevant document as the needed item;
+  paging instead of reformulation; whole documents as snippets (the OpenClaw memory
+  search returns chunks); no LLM, no tokens, no answer quality. An end-to-end
+  measurement with a real agent (OpenClaw with a local model; memory search AND
+  against OR; tokens and search calls until the correct answer) is planned
+  separately and not part of this section.
