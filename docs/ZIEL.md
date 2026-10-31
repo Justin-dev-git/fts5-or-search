@@ -249,3 +249,25 @@ Alle Zahlen stammen aus `docs/VALIDATION.md`, Abschnitt T26.
   solche, die damit enden („Ausweis“ → „Personalausweis“).
 - Nächster Schritt laut Task: Library-Option und Empfehlung getrennt (nicht
   Teil von T26).
+
+## Ergebnis nach T31 (31.10.2026)
+Alle Zahlen stammen aus `docs/VALIDATION.md`, Abschnitte T26 und T31.
+
+- **Library-Option:** `buildOrMatch(q, { stopwords, prefixMin: 4 })` macht jedes
+  Wort aus nur Buchstaben ab 4 Zeichen zu `"wort"*`, alles andere bleibt exakt;
+  vier Code-Zeilen in `buildOrMatch` (zwei neu). Die Bench-Lane `or-prefix-4`
+  nutzt sie und liefert für jede Frage dasselbe Ergebnis wie in T26 (0 von 3 000
+  Fragen auf WebFAQ-de 100 000, 0 von 1 000 auf mMARCO-de 1 000 000).
+- **E5 für `or-prefix-4` in „mittel“ und „groß“ erfüllt:** die messbaren Teile
+  auf allen vier nicht abgestimmten Testsätzen dieser Klassen (T26: +0.0393,
+  +0.0330, +0.0174, +0.0281 nDCG@10, Intervalle über null, P@10 nie schlechter,
+  p95 im Budget; in den T31-Läufen wieder im Budget), der Code-Teil mit der
+  Library-Option. „Klein“ hält weiterhin nicht (GerDaLIRSmall +0.0003).
+- **Empfehlung Deutsch ab 50 000 Dokumenten:**
+  `buildOrMatch(q, { stopwords: STOPWORDS_DE, prefixMin: 4 })` auf `unicode61`.
+  Unter 50 000 Dokumenten unverändert (Trigram, vorläufig).
+- **FTS5-Präfix-Index** (`prefix='…'` beim Anlegen): ändert keine Rangfolge,
+  kostet das 1.21- bis 1.82-Fache der Indexgröße und senkt die Latenz von
+  `or-prefix-4` nicht konsistent. FTS5 nutzt ihn nur für Präfixe genau der
+  konfigurierten Länge; `prefix='4'` bedient 7.0 bis 8.7 % der Präfix-Wörter.
+  Keine Empfehlung.
