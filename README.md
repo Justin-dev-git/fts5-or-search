@@ -278,13 +278,14 @@ and the follow-up searches that would cause (not measured). Prefix queries put t
 item into the first six more often; when both lanes find it, they do not shorten
 the reading. These numbers describe the retrieval side,
 not the context of an LLM agent: system prompt, tool descriptions, reformulated
-queries and answers were not measured. An end-to-end measurement with a real agent (OpenClaw with a local model,
-memory search AND against OR, tokens and search calls until the correct answer) is
-planned. In the OpenClaw case study the AND keyword half found nothing for 10 of 14
-real requests (T28). Search latency: the OR lane had a p95 of 24.72 ms (German) and
-118.78 ms (English) at 1 000 000 passages and 1 027.75 ms on all 8 841 823 English
-passages. Model calls were not timed here, so whether latency matters for an agent
-outside very large corpora is an open question.
+queries and answers were not measured. An end-to-end measurement with a real
+agent (OpenClaw with a local model, memory search AND against OR, tokens and
+search calls until the correct answer) is planned. In the OpenClaw case study the
+AND keyword half found nothing for 10 of 14 real requests (T28). Search latency:
+the OR lane had a p95 of 24.72 ms (German) and 118.78 ms (English) at 1 000 000
+passages and 1 027.75 ms on all 8 841 823 English passages. Model calls were not
+timed here, so whether latency matters for an agent outside very large corpora is
+an open question.
 
 ## Case study: OpenClaw memory and context
 
