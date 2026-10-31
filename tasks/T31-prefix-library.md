@@ -18,6 +18,7 @@ Erlaubte Dateien:
 - docs/ZIEL.md
 - README.md
 - CHANGELOG.md
+- package.json
 
 ## Vorgaben
 - `buildOrMatch(query, { stopwords, prefixMin })`: Tokens aus nur Buchstaben mit mindestens `prefixMin` Zeichen
@@ -28,14 +29,31 @@ Erlaubte Dateien:
 - Präfix-Index: Bench-Option `--fts-prefix '<längen>'` legt den `unicode61`-Index mit `prefix='<längen>'` an.
   Messung auf WebFAQ-de 891 201 und mMARCO-de 1 000 000: `or` und `or-prefix-4` ohne Index sowie mit
   `prefix='4'` und `prefix='4 5 6 7 8'`; Latenz (p50/p95), Indexgröße, Bauzeit; nDCG@10 muss gleich bleiben.
+  FTS5 nutzt einen Präfix-Index nur für Präfix-Abfragen genau der konfigurierten Längen: an den Daten prüfen
+  (Wortlängen der Anfragen), nicht annehmen.
+- Empfehlung streng nach E5 (`docs/ZIEL.md`): Hält E5 mit der Library-Option, wird Deutsch ab 50 000 Dokumenten
+  `buildOrMatch(q, { stopwords: STOPWORDS_DE, prefixMin: 4 })` auf `unicode61` empfohlen; unter 50 000 ändert sich
+  nichts. Der Präfix-Index wird nur als Option genannt, wenn er messbar hilft. README (Kurzfassung, deutsche
+  Ergebnisse, Fazit, Quick start), `docs/ZIEL.md` („Ergebnis nach T31“), CHANGELOG, VALIDATION-Abschnitt. Jede Zahl der
+  README steht in `docs/VALIDATION.md` oder `docs/ZIEL.md`.
+- Release 0.4.0 (neue Library-Option): `package.json` und datierter CHANGELOG-Abschnitt `## 0.4.0 (2026-10-31)` im PR;
+  GitHub-Release nach dem Merge (nicht Teil der Dateien). Kein npm.
 
 ## Prüfung
 ```bash
 npm test
 node -e "import('./lib/or-search.mjs').then(m=>{const de={stopwords:m.STOPWORDS_DE};if(m.buildOrMatch('Wo beantrage ich den Hundeausweis',{...de,prefixMin:4})!=='(\"beantrage\"* OR \"hundeausweis\"*)')process.exit(1);if(m.buildOrMatch('Fehler E4512',{...de,prefixMin:4})!=='(\"fehler\"* OR \"e4512\")')process.exit(2);if(m.buildOrMatch('Wo beantrage ich den Hundeausweis',de)!=='(\"beantrage\" OR \"hundeausweis\")')process.exit(3)})"
 grep -F "## T31 – Prefix queries in the library" docs/VALIDATION.md
+grep -F "## Ergebnis nach T31" docs/ZIEL.md
+grep -F "prefixMin: 4" README.md
+grep -F '"version": "0.4.0"' package.json
+grep -F "## 0.4.0 (2026-10-31)" CHANGELOG.md
+! grep -F "## Unreleased" CHANGELOG.md
+node -e "const t=require('fs').readFileSync('README.md','utf8');const want=['Introduction','Results','Case study: OpenClaw memory and context','Conclusion','How to read the results','Quick start','Other exports','Reproduce','How this was built','License'];const got=[...t.matchAll(/^## (.+)$/gm)].map(m=>m[1]);if(JSON.stringify(got)!==JSON.stringify(want)){console.error(got);process.exit(1)}"
+node -e "const fs=require('fs');const strip=s=>s.replace(/\`\`\`[\s\S]*?\`\`\`/g,'');const r=strip(fs.readFileSync('README.md','utf8'));const ref=fs.readFileSync('docs/VALIDATION.md','utf8')+fs.readFileSync('docs/ZIEL.md','utf8');const ok=new Set(['22.13','2021','0.4.0','0.3.0','0.2.0']);const bad=[...new Set(r.match(/\d{1,3}(?: \d{3})+(?:\.\d+)?|\d+\.\d+(?:\.\d+)?|\d{3,}/g))].filter(n=>!ok.has(n)&&!ref.includes(n));if(bad.length){console.error(bad);process.exit(1)}"
 ! grep -nE "/home/|/Users/" docs/VALIDATION.md README.md
 ```
 
 ## Nicht Teil dieser Task
 - Präfix für `sanitizeMatch`, `adaptiveSearch` oder Englisch; npm-Veröffentlichung.
+- README-Absatz, was „findet besser“ für einen Agenten bedeutet (→ T32, mit eigener Messung).

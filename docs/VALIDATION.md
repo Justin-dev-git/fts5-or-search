@@ -2836,3 +2836,220 @@ isolated, so only differences within the later run are reported.
   A possible reason (not measured): chat memory and conversation history are
   short and informal and are already searched with OR. The prefix lane was not
   adopted in the installation.
+
+
+## T31 – Prefix queries in the library
+
+Question: T26 measured prefix queries only as a bench lane, so the code part of E5
+(at most about 50 lines of library code) was open. Does a library option reproduce
+the T26 lane exactly, and does an FTS5 prefix index (`prefix='…'` when the table is
+created) lower its latency?
+
+Code: measurement commit `6df9ea2`. `buildOrMatch(query, { stopwords, prefixMin })`
+in `lib/or-search.mjs`: every token of letters only with at least `prefixMin` letters
+becomes `"wort"*`, every other token stays exact (codes, versions, words with
+hyphens); without `prefixMin` (or 0) the output is byte-identical to before; a value
+that is not a non-negative integer throws a `RangeError`. Only the library adds the
+`*`; user input cannot add its own operators. Four lines of code in `buildOrMatch`
+(two of them new), plus comments. The bench lane `or-prefix-<n>` now calls it, and
+`--fts-prefix '<lengths>'` builds the `unicode61` index with FTS5 `prefix='<lengths>'`.
+Tests: `test/prefix-lib.test.mjs` (match strings, injection, SQLite with and without a
+prefix index) and `test/prefix.test.mjs` (bench option).
+
+### Parity with T26
+
+Lanes `or,or-prefix-4`, `--stopwords lib`, `--repeat 1`, on WebFAQ-de 100 000 (3 000
+questions) and mMARCO-de 1 000 000 (1 000 questions); the two sets ran in parallel on
+two cores, so the latencies of these two runs are not used. Per question against the
+T26 per-query files (same question ids):
+
+| set | lane | questions | nDCG@10 differs | P@10 differs |
+|---|---|---:|---:|---:|
+| WebFAQ-de 100 000 | `or` | 3 000 | 0 | 0 |
+| WebFAQ-de 100 000 | `or-prefix-4` | 3 000 | 0 | 0 |
+| mMARCO-de 1 000 000 | `or` | 1 000 | 0 | 0 |
+| mMARCO-de 1 000 000 | `or-prefix-4` | 1 000 | 0 | 0 |
+
+The T26 lane joined the terms without the outer parentheses of `buildOrMatch`; FTS5
+parses both forms the same way.
+
+```
+dataset=deu-100000 docs=100000 queries=3000 repeat=1
+lane         ndcg@10  mrr@10  recall@100  p@10    p50ms  p95ms
+or           0.6065   0.5774  0.7930      0.0698  1.23   5.24
+or-prefix-4  0.6395   0.6103  0.8277      0.0731  2.58   8.41
+db size MB: unicode61=68.48 trigram=189.38
+index deu-100000-unicode61: build 1.2 s, size 68.48 MB
+index deu-100000-trigram: build 4.0 s, size 189.38 MB
+```
+
+```
+dataset=de-1000000 docs=1000000 queries=1000 repeat=1
+lane         ndcg@10  mrr@10  recall@100  p@10    p50ms  p95ms
+or           0.3493   0.3258  0.5719      0.0454  6.67   24.87
+or-prefix-4  0.3668   0.3435  0.6149      0.0475  9.97   43.19
+db size MB: unicode61=663.22 trigram=1942.40
+index de-1000000-unicode61: build 13.1 s, size 663.22 MB
+index de-1000000-trigram: build 52.6 s, size 1942.40 MB
+```
+
+### FTS5 prefix index
+
+WebFAQ-de 891 201 (3 000 questions) and mMARCO-de 1 000 000 (1 000 questions), lanes
+`or,or-prefix-4`, `--stopwords lib`, `--repeat 2` (the worse p50/p95 of the two
+repeats is reported), `--report-db`. The three index variants of a set ran one after
+another on the same pinned core. Other work ran on the machine (among others a
+CPU-bound process on another core and the local LLM server), so latencies are compared
+only within a set. The unchanged `or` lane shows the run-to-run spread: p95 50.03 to
+50.34 ms on WebFAQ-de, 25.13 to 26.35 ms on mMARCO-de. Index size and build time are
+those of the `unicode61` index (the bench also builds a trigram index, not used here).
+
+| set | prefix index | index MB | build s | `or` p50 / p95 ms | `or-prefix-4` p50 / p95 ms |
+|---|---|---:|---:|---:|---:|
+| WebFAQ-de 891 201 | none | 579.20 | 10.9 | 9.89 / 50.03 | 16.77 / 71.74 |
+| WebFAQ-de 891 201 | `prefix='4'` | 707.84 | 15.9 | 9.88 / 50.07 | 16.34 / 68.84 |
+| WebFAQ-de 891 201 | `prefix='4 5 6 7 8'` | 1 056.82 | 38.3 | 9.98 / 50.34 | 15.14 / 63.11 |
+| mMARCO-de 1 000 000 | none | 663.22 | 13.2 | 6.80 / 25.13 | 10.20 / 43.97 |
+| mMARCO-de 1 000 000 | `prefix='4'` | 803.39 | 18.4 | 7.15 / 26.19 | 10.55 / 41.18 |
+| mMARCO-de 1 000 000 | `prefix='4 5 6 7 8'` | 1 177.89 | 40.8 | 7.07 / 26.35 | 10.03 / 42.45 |
+
+nDCG@10 is the same with every variant (WebFAQ-de: `or` 0.4665, `or-prefix-4` 0.4946;
+mMARCO-de: 0.3493 and 0.3668, as in T26), and per question every nDCG@10 and P@10
+value is identical to the run without prefix index (0 of 6 000 values on WebFAQ-de and
+0 of 2 000 on mMARCO-de differ, per variant).
+
+FTS5 uses a prefix index only for prefix queries of exactly one of the configured
+lengths (counted in characters); a longer prefix such as `"personalausweis"*` is still
+answered from the main index. The prefix words of the questions (letters only, at
+least 4 letters, after `STOPWORDS_DE`), by length:
+
+| set | prefix words | 4 letters (`prefix='4'`) | 5 to 8 letters | 9 letters or more (no index) | questions with a word of 9+ letters |
+|---|---:|---:|---:|---:|---:|
+| WebFAQ-de 891 201 | 10 874 | 947 (8.7 %) | 5 702 (52.4 %) | 4 225 (38.9 %) | 2 376 of 3 000 (79.2 %) |
+| mMARCO-de 1 000 000 | 2 385 | 167 (7.0 %) | 1 181 (49.5 %) | 1 037 (43.5 %) | 696 of 1 000 (69.6 %) |
+
+A direct check per question group (`or-prefix-4` only; the unicode61 index without,
+with `prefix='4'` and with `prefix='4 5 6 7 8'` built one after another on the same
+core; one untimed warm-up pass, then three timed passes; per question the median of the
+three, then p50/p95 over the questions of a group; the top 100 ids were identical in
+all three variants). If the index helped, the group "has a 4-letter prefix token"
+should gain with `prefix='4'` and the group "no 4-letter prefix token" should not:
+
+```
+dataset=deu-all queries=3000 repeats=3 (median per query, after one untimed warm-up pass) lane=or-prefix-4
+group | n | none p50/p95 | prefix=4 p50/p95 | prefix=4 5 6 7 8 p50/p95
+has a 4-letter prefix token | 771 | 36.01 / 97.39 | 32.96 / 95.2 | 33.38 / 93.28
+no 4-letter prefix token | 2229 | 14.5 / 60.6 | 15.4 / 60.67 | 16.11 / 56.8
+all prefix tokens 4-8 letters | 604 | 18.72 / 65.8 | 18.45 / 65.46 | 18.94 / 62.84
+a prefix token of 9+ letters | 2376 | 18.45 / 73.95 | 18.72 / 72.35 | 19.42 / 70.05
+all queries | 3000 | 18.34 / 72.28 | 18.5 / 71.08 | 19.19 / 68.22
+top-100 ids differ: none vs 4: 0, none vs 4 5 6 7 8: 0
+```
+
+```
+dataset=de-1000000 queries=1000 repeats=3 (median per query, after one untimed warm-up pass) lane=or-prefix-4
+group | n | none p50/p95 | prefix=4 p50/p95 | prefix=4 5 6 7 8 p50/p95
+has a 4-letter prefix token | 152 | 24.19 / 61.65 | 19.34 / 53.17 | 21.51 / 57.32
+no 4-letter prefix token | 848 | 12.05 / 38.5 | 9.59 / 38.58 | 11.07 / 37.04
+all prefix tokens 4-8 letters | 251 | 15.15 / 47.05 | 13.1 / 46.06 | 13.58 / 41.07
+a prefix token of 9+ letters | 696 | 14.64 / 50.35 | 11.75 / 44.01 | 13.83 / 47.53
+all queries | 1000 | 13.57 / 47.8 | 11.12 / 43.5 | 12.69 / 42.78
+top-100 ids differ: none vs 4: 0, none vs 4 5 6 7 8: 0
+```
+
+On WebFAQ-de the questions with a 4-letter prefix word gained with `prefix='4'` (p50
+36.01 → 32.96 ms) while the others did not (14.5 → 15.4 ms). On mMARCO-de both groups
+gained by about the same share (24.19 → 19.34 and 12.05 → 9.59 ms), although the
+index cannot serve the second group; differences of this size are therefore within the
+run-to-run spread. Over all questions the follow-up and the bench runs disagree in
+direction for the p50 (WebFAQ-de with `prefix='4 5 6 7 8'`: 18.34 → 19.19 ms here,
+16.77 → 15.14 ms in the bench run).
+
+```
+dataset=deu-all docs=891201 queries=3000 repeat=2
+lane         ndcg@10  mrr@10  recall@100  p@10    p50ms  p95ms
+or           0.4665   0.4317  0.7120      0.0577  9.89   50.03
+or-prefix-4  0.4946   0.4586  0.7453      0.0609  16.77  71.74
+db size MB: unicode61=579.20 trigram=1670.14
+index deu-all-unicode61: build 10.9 s, size 579.20 MB
+index deu-all-trigram: build 43.6 s, size 1670.14 MB
+```
+
+```
+dataset=deu-all docs=891201 queries=3000 repeat=2
+lane         ndcg@10  mrr@10  recall@100  p@10    p50ms  p95ms
+or           0.4665   0.4317  0.7120      0.0577  9.88   50.07
+or-prefix-4  0.4946   0.4586  0.7453      0.0609  16.34  68.84
+db size MB: unicode61=707.84 trigram=1670.14
+index deu-all-unicode61-p4: build 15.9 s, size 707.84 MB
+index deu-all-trigram: build 43.6 s, size 1670.14 MB
+```
+
+```
+dataset=deu-all docs=891201 queries=3000 repeat=2
+lane         ndcg@10  mrr@10  recall@100  p@10    p50ms  p95ms
+or           0.4665   0.4317  0.7120      0.0577  9.98   50.34
+or-prefix-4  0.4946   0.4586  0.7453      0.0609  15.14  63.11
+db size MB: unicode61=1056.82 trigram=1670.14
+index deu-all-unicode61-p4_5_6_7_8: build 38.3 s, size 1056.82 MB
+index deu-all-trigram: build 43.9 s, size 1670.14 MB
+```
+
+```
+dataset=de-1000000 docs=1000000 queries=1000 repeat=2
+lane         ndcg@10  mrr@10  recall@100  p@10    p50ms  p95ms
+or           0.3493   0.3258  0.5719      0.0454  6.80   25.13
+or-prefix-4  0.3668   0.3435  0.6149      0.0475  10.20  43.97
+db size MB: unicode61=663.22 trigram=1942.40
+index de-1000000-unicode61: build 13.2 s, size 663.22 MB
+index de-1000000-trigram: build 53.9 s, size 1942.40 MB
+```
+
+```
+dataset=de-1000000 docs=1000000 queries=1000 repeat=2
+lane         ndcg@10  mrr@10  recall@100  p@10    p50ms  p95ms
+or           0.3493   0.3258  0.5719      0.0454  7.15   26.19
+or-prefix-4  0.3668   0.3435  0.6149      0.0475  10.55  41.18
+db size MB: unicode61=803.39 trigram=1942.40
+index de-1000000-unicode61-p4: build 18.4 s, size 803.39 MB
+index de-1000000-trigram: build 53.3 s, size 1942.40 MB
+```
+
+```
+dataset=de-1000000 docs=1000000 queries=1000 repeat=2
+lane         ndcg@10  mrr@10  recall@100  p@10    p50ms  p95ms
+or           0.3493   0.3258  0.5719      0.0454  7.07   26.35
+or-prefix-4  0.3668   0.3435  0.6149      0.0475  10.03  42.45
+db size MB: unicode61=1177.89 trigram=1942.40
+index de-1000000-unicode61-p4_5_6_7_8: build 40.8 s, size 1177.89 MB
+index de-1000000-trigram: build 64.1 s, size 1942.40 MB
+```
+
+### Facts
+
+- The library option reproduces the T26 lane exactly (0 differing questions on
+  WebFAQ-de 100 000 and mMARCO-de 1 000 000). With four lines of library code the
+  code part of E5 is met.
+- E5 per size class (T23) for `or-prefix-4`: the measurable parts hold on every
+  untuned test set of the medium and large classes (T26: mMARCO-de 100 000 +0.0393,
+  WebFAQ-de 100 000 +0.0330, mMARCO-de 1 000 000 +0.0174, WebFAQ-de 891 201 +0.0281
+  nDCG@10, all intervals exclude zero, P@10 never lower, p95 inside the budget). The
+  p95 is inside the budget in the T31 runs as well (WebFAQ-de 891 201: 71.74 against
+  50.03 ms, budget 150.09 ms; mMARCO-de 1 000 000: 43.97 against 25.13 ms, budget
+  75.39 ms). The small class still does not hold (GerDaLIRSmall +0.0003).
+- Recommendation for German from 50 000 documents therefore:
+  `buildOrMatch(q, { stopwords: STOPWORDS_DE, prefixMin: 4 })` on a `unicode61`
+  index. Below 50 000 documents nothing changes (trigram, provisional, T23).
+- The FTS5 prefix index changes no ranking and costs 1.22 and 1.21 times the index
+  size (`prefix='4'`) or 1.82 and 1.78 times (`prefix='4 5 6 7 8'`; WebFAQ-de and
+  mMARCO-de), and 1.5/1.4 or 3.5/3.1 times the build time. Its effect on the
+  latency of `or-prefix-4` is small and not consistent: in the bench runs the p95
+  fell by 4 % and 12 % on WebFAQ-de and by 6 % and 3 % on mMARCO-de. In the follow-up
+  the p50 over all questions moved the other way on WebFAQ-de, where the questions
+  with only 4- to 8-letter prefix words also gained no more from `prefix='4 5 6 7 8'`
+  than those with a word of nine letters or more; on mMARCO-de, with `prefix='4'`,
+  the group the index cannot serve gained as much (about 20 %) as the group it can. `prefix='4'` serves only 7.0 to 8.7 % of the prefix words, and
+  `prefix='4 5 6 7 8'` leaves the 38.9 to 43.5 % with nine letters or more to the main
+  index. The prefix index is not recommended. A plausible reason, not measured: for
+  `ORDER BY rank` FTS5 scores every document that matches a query word, and a prefix
+  index does not reduce the number of matching documents.

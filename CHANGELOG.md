@@ -3,7 +3,27 @@
 All notable changes to this project are documented here.
 Behavior changes to public functions are marked **Behavior change**.
 
-## Unreleased
+## 0.4.0 (2026-10-31)
+
+Since 0.3.0: the option `prefixMin` of `buildOrMatch` and, with it, a new German
+recommendation for corpora of 50 000 documents or more. Without `prefixMin` the
+output of `buildOrMatch` is byte-identical to 0.3.0; no other function changed.
+
+### Added: prefix queries in the library; German recommendation from 50 000 documents (T31)
+- `buildOrMatch(q, { stopwords, prefixMin })`: every token of letters only with
+  at least `prefixMin` letters becomes an FTS5 prefix query `"wort"*`; tokens with
+  digits, dots or hyphens stay exact; values that are not non-negative integers
+  throw a `RangeError`. `test/prefix-lib.test.mjs`.
+- The bench lane `or-prefix-<n>` uses it and gives the T26 result for every
+  question (0 differences on WebFAQ-de 100 000 and mMARCO-de 1 000 000).
+- German from 50 000 documents: `buildOrMatch(q, { stopwords: STOPWORDS_DE,
+  prefixMin: 4 })` on `unicode61`. With the library option E5 is met on every
+  untuned test set of the medium and large classes (+0.0174 to +0.0393 nDCG@10,
+  T26). Below 50 000 documents unchanged (trigram, provisional).
+- `scripts/beir-bench.mjs --fts-prefix '<lengths>'` builds the `unicode61` index
+  with an FTS5 prefix index. Measured on WebFAQ-de 891 201
+  and mMARCO-de 1 000 000 with `prefix='4'` and `'4 5 6 7 8'`: no ranking change,
+  1.21 to 1.82 times the index size, no consistent latency gain; not recommended.
 
 ### Changed: README order as in Science/Nature (T30, docs only)
 - Summary, introduction, results (with the OpenClaw case study), conclusion; then the
