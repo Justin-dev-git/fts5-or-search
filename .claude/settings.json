@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "deny": [
+      "mcp__github__merge_pull_request",
+      "mcp__github__enable_pr_auto_merge",
+      "Bash(gh pr merge *)",
+      "Bash(git push *--force*)",
+      "Bash(git push -f*)",
+      "Bash(git push * -f*)",
+      "Bash(git push * +*)",
+      "Bash(git push *--delete*)",
+      "Bash(git push * :**)",
+      "Bash(sudo *)",
+      "Edit(~/.openclaw/**)"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/test-gate.mjs\"",
+            "timeout": 300
+          }
+        ]
+      }
+    ]
+  }
+}
